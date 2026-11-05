@@ -18,6 +18,7 @@
 #include "dao/Portraits.h"
 #include "dao/core/GfxMovie.h"
 
+#include <windows.h>
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -28,12 +29,29 @@ namespace transmog::gui
 namespace
 {
 
-constexpr std::size_t kRowsPerPage = 10;
+constexpr std::size_t kRowsPerPage = 8;
 
 bool g_browserVisible = false;
 catalog::Slot g_selectedSlot = catalog::Slot::Chest;
 std::size_t g_currentPage = 0;
 bool g_isHeadZoomed = false;
+
+std::string WideToUtf8(std::wstring_view wstr)
+{
+    if (wstr.empty())
+    {
+        return {};
+    }
+    const int size =
+        WideCharToMultiByte(CP_UTF8, 0, wstr.data(), static_cast<int>(wstr.size()), nullptr, 0, nullptr, nullptr);
+    if (size <= 0)
+    {
+        return {};
+    }
+    std::string result(size, 0);
+    WideCharToMultiByte(CP_UTF8, 0, wstr.data(), static_cast<int>(wstr.size()), result.data(), size, nullptr, nullptr);
+    return result;
+}
 
 struct BrowserRow
 {
@@ -43,6 +61,8 @@ struct BrowserRow
     std::uint8_t defaultMaterial = 0xFF;
     bool hasHeraldry = false;
     std::wstring label;
+    std::wstring subtitle;
+    std::wstring icon;
 };
 
 dao::ObjectId CurrentCharacter()
@@ -114,7 +134,9 @@ std::vector<BrowserRow> BuildBrowserRows(catalog::Slot slot)
         .variation = 0,
         .defaultMaterial = 0xFF,
         .hasHeraldry = false,
-        .label = L"<Use Equipped Item's Real Look>",
+        .label = L"<Equipped Item Real Look>",
+        .subtitle = L"Authentic Equipment",
+        .icon = L"",
     });
 
     // 2. Hide Slot row
@@ -124,7 +146,9 @@ std::vector<BrowserRow> BuildBrowserRows(catalog::Slot slot)
         .variation = 0,
         .defaultMaterial = 0xFF,
         .hasHeraldry = false,
-        .label = L"<Hide Slot / Bare Body>",
+        .label = (slot == catalog::Slot::Helmet) ? L"<Always Hide Helmet>" : L"<Hide Slot / Bare Body>",
+        .subtitle = L"Bare Model",
+        .icon = L"",
     });
 
     // 3. Hide in Dialogues row (for Helmet)
@@ -137,6 +161,8 @@ std::vector<BrowserRow> BuildBrowserRows(catalog::Slot slot)
             .defaultMaterial = 0xFF,
             .hasHeraldry = false,
             .label = L"<Hide Helmet in Dialogues>",
+            .subtitle = L"Contextual Visibility",
+            .icon = L"",
         });
     }
 
@@ -155,13 +181,34 @@ std::vector<BrowserRow> BuildBrowserRows(catalog::Slot slot)
         }
 
         std::wstring display = entry->name;
+        std::wstring sub;
         if (!entry->label.empty() && entry->label != entry->name)
         {
-            display += L" (" + entry->label + L")";
+            sub = entry->label;
         }
-        else
+        else if (entry->armorType > 0)
         {
-            display += L" [Var " + std::to_wstring(entry->variation) + L"]";
+            switch (entry->armorType)
+            {
+            case 1:
+                sub = L"Light Armor";
+                break;
+            case 2:
+                sub = L"Medium Armor";
+                break;
+            case 3:
+                sub = L"Heavy Armor";
+                break;
+            case 4:
+                sub = L"Massive Armor";
+                break;
+            default:
+                break;
+            }
+        }
+        else if (const auto *mat = catalog::FindMaterial(entry->defaultMaterial))
+        {
+            sub = mat->name;
         }
 
         rows.push_back(BrowserRow{
@@ -171,6 +218,8 @@ std::vector<BrowserRow> BuildBrowserRows(catalog::Slot slot)
             .defaultMaterial = entry->defaultMaterial,
             .hasHeraldry = entry->hasHeraldry,
             .label = std::move(display),
+            .subtitle = std::move(sub),
+            .icon = entry->icon,
         });
     }
 
@@ -209,22 +258,26 @@ void RefreshBrowserUI(dao::gui::Movie &movie, dao::ObjectId charId)
     hdrText += L"]";
     movie.SetVariable("_root.DAOTransmog_Browser.hdr.lbl.TextField.text", dao::gui::Value::WString(hdrText.c_str()));
 
-    // Highlight active preset button label
+    // Highlight active preset button label (Roman numerals I, II, III)
     for (std::uint8_t p = 0; p < 3; ++p)
     {
         const std::string prePath = "_root.DAOTransmog_Browser.pre" + std::to_string(p) + ".lbl.TextField.text";
-        const std::wstring preLbl =
-            (st.activePreset % 3 == p) ? (L"[P" + std::to_wstring(p + 1) + L"]") : (L"P" + std::to_wstring(p + 1));
+        const std::wstring numeral = (p == 0) ? L"I" : ((p == 1) ? L"II" : L"III");
+        const std::wstring preLbl = (st.activePreset % 3 == p) ? (L"[" + numeral + L"*]") : numeral;
         movie.SetVariable(prePath.c_str(), dao::gui::Value::WString(preLbl.c_str()));
     }
 
-    // 2. Update the 10 Catalog Rows on Current Page
+    // 2. Update the 8 Catalog Rows on Current Page
     for (std::size_t i = 0; i < kRowsPerPage; ++i)
     {
         const std::size_t idx = g_currentPage * kRowsPerPage + i;
         const std::string rowBase = "_root.DAOTransmog_Browser.row" + std::to_string(i);
         const std::string visPath = rowBase + "._visible";
-        const std::string txtPath = rowBase + ".lbl.TextField.text";
+        const std::string namePath = rowBase + ".lbl.TextField.text";
+        const std::string subPath = rowBase + ".lblSub.TextField.text";
+        const std::string hlPath = rowBase + ".hl._visible";
+        const std::string iconFrameVisPath = rowBase + ".icon_frame._visible";
+        const std::string iconMcPath = rowBase + ".icon_frame.icon_mc";
 
         if (idx < rows.size())
         {
@@ -257,14 +310,36 @@ void RefreshBrowserUI(dao::gui::Movie &movie, dao::ObjectId charId)
                               (r.baseItem == curSlot.baseItem && r.variation == curSlot.variation));
             }
 
-            const std::wstring rowText = isSelected ? (L">> " + r.label + L" *") : (L"   " + r.label);
+            const std::wstring rowText = isSelected ? (L">> " + r.label + L" *") : r.label;
             movie.SetVariable(visPath.c_str(), dao::gui::Value::Bool(true));
-            movie.SetVariable(txtPath.c_str(), dao::gui::Value::WString(rowText.c_str()));
+            movie.SetVariable(namePath.c_str(), dao::gui::Value::WString(rowText.c_str()));
+            movie.SetVariable(subPath.c_str(), dao::gui::Value::WString(r.subtitle.c_str()));
+            movie.SetVariable((rowBase + ".lbl.TextField.textColor").c_str(), dao::gui::Value::Number(0x261906));
+            movie.SetVariable((rowBase + ".lblSub.TextField.textColor").c_str(), dao::gui::Value::Number(0x5C4430));
+            movie.SetVariable((rowBase + ".lbl.TextField.html").c_str(), dao::gui::Value::Bool(false));
+            movie.SetVariable((rowBase + ".lblSub.TextField.html").c_str(), dao::gui::Value::Bool(false));
+            movie.SetVariable(hlPath.c_str(), dao::gui::Value::Bool(isSelected));
+
+            if (!r.icon.empty())
+            {
+                movie.SetVariable(iconFrameVisPath.c_str(), dao::gui::Value::Bool(true));
+                const std::string imgUrl = "img://" + WideToUtf8(r.icon) + ".dds?Width=28&Height=28";
+                const dao::gui::Value loadArgs[] = {dao::gui::Value::String(imgUrl.c_str())};
+                movie.Invoke((iconMcPath + ".loadMovie").c_str(), std::span<const dao::gui::Value>(loadArgs));
+            }
+            else
+            {
+                movie.SetVariable(iconFrameVisPath.c_str(), dao::gui::Value::Bool(false));
+                movie.Invoke((iconMcPath + ".unloadMovie").c_str());
+            }
         }
         else
         {
             movie.SetVariable(visPath.c_str(), dao::gui::Value::Bool(false));
-            movie.SetVariable(txtPath.c_str(), dao::gui::Value::WString(L""));
+            movie.SetVariable(namePath.c_str(), dao::gui::Value::WString(L""));
+            movie.SetVariable(subPath.c_str(), dao::gui::Value::WString(L""));
+            movie.SetVariable(hlPath.c_str(), dao::gui::Value::Bool(false));
+            movie.SetVariable(iconFrameVisPath.c_str(), dao::gui::Value::Bool(false));
         }
     }
 
