@@ -107,6 +107,34 @@ extern "C" __declspec(dllexport) bool __cdecl DAOLib_Load(const dao::LoaderInfo 
             return; // In main menu
         }
 
+        // On entering or exiting dialogue/cutscene, refresh appearance to apply per-character HideDialogue helmet rules
+        static std::optional<dao::GameMode> s_prevMode;
+        if (s_prevMode.has_value() && *s_prevMode != *mode)
+        {
+            const bool wasDialogue = (*s_prevMode == dao::GameMode::Dialog || *s_prevMode == dao::GameMode::Cutscene);
+            const bool isDialogue = (*mode == dao::GameMode::Dialog || *mode == dao::GameMode::Cutscene);
+            if (wasDialogue != isDialogue)
+            {
+                const dao::ObjectId heroId = dao::script::api::GetHero();
+                const dao::ObjectId controlledId = dao::party::Controlled();
+                const dao::ObjectId mainChar = (heroId != dao::kInvalidObject) ? heroId : controlledId;
+                if (mainChar != dao::kInvalidObject)
+                {
+                    transmog::appearance::RefreshAppearance(mainChar, false);
+                    const auto party = dao::script::api::GetPartyList(mainChar);
+                    for (std::size_t i = 0; i < party.Size(); ++i)
+                    {
+                        const dao::ObjectId member = party.Object(i);
+                        if (member != dao::kInvalidObject && member != mainChar)
+                        {
+                            transmog::appearance::RefreshAppearance(member, false);
+                        }
+                    }
+                }
+            }
+        }
+        s_prevMode = *mode;
+
         if (!transmog::state::NeedsWorldRefresh())
         {
             return;

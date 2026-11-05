@@ -229,9 +229,33 @@ void RefreshBrowserUI(dao::gui::Movie &movie, dao::ObjectId charId)
         if (idx < rows.size())
         {
             const auto &r = rows[idx];
-            const bool isSelected =
-                (r.mode == curSlot.mode) &&
-                (r.mode != state::SlotMode::Override || (r.baseItem == curSlot.baseItem && r.variation == curSlot.variation));
+            bool isSelected = false;
+            if (g_selectedSlot == catalog::Slot::Helmet)
+            {
+                if (curSlot.mode == state::SlotMode::HideSlot)
+                {
+                    isSelected = (r.mode == state::SlotMode::HideSlot);
+                }
+                else if (curSlot.mode == state::SlotMode::HideDialogue && (curSlot.baseItem == 0xFFFF || curSlot.baseItem == 0))
+                {
+                    isSelected = (r.mode == state::SlotMode::HideDialogue);
+                }
+                else if (curSlot.mode == state::SlotMode::Real)
+                {
+                    isSelected = (r.mode == state::SlotMode::Real);
+                }
+                else
+                {
+                    isSelected = (r.mode == state::SlotMode::Override && r.baseItem == curSlot.baseItem &&
+                                  r.variation == curSlot.variation);
+                }
+            }
+            else
+            {
+                isSelected = (r.mode == curSlot.mode) &&
+                             (r.mode != state::SlotMode::Override ||
+                              (r.baseItem == curSlot.baseItem && r.variation == curSlot.variation));
+            }
 
             const std::wstring rowText = isSelected ? (L">> " + r.label + L" *") : (L"   " + r.label);
             movie.SetVariable(visPath.c_str(), dao::gui::Value::Bool(true));
@@ -264,20 +288,40 @@ void RefreshBrowserUI(dao::gui::Movie &movie, dao::ObjectId charId)
     }
     movie.SetVariable("_root.DAOTransmog_Browser.matInfo.lbl.TextField.text", dao::gui::Value::WString(matText.c_str()));
 
-    // 5. Update Heraldry Label
-    std::wstring herText = L"Heraldry: Default / None";
-    if (curSlot.heraldry != 0)
+    // 5. Update Heraldry / Helmet Visibility Label
+    if (g_selectedSlot == catalog::Slot::Helmet)
     {
-        if (const auto *her = catalog::FindHeraldry(curSlot.heraldry))
+        std::wstring visText;
+        switch (curSlot.mode)
         {
-            herText = L"Heraldry: " + her->label;
+        case state::SlotMode::HideDialogue:
+            visText = L"Helmet: Hide in Dialogue";
+            break;
+        case state::SlotMode::HideSlot:
+            visText = L"Helmet: Always Hide";
+            break;
+        default:
+            visText = L"Helmet: Always Show";
+            break;
         }
-        else
-        {
-            herText = L"Heraldry: ID " + std::to_wstring(curSlot.heraldry);
-        }
+        movie.SetVariable("_root.DAOTransmog_Browser.herInfo.lbl.TextField.text", dao::gui::Value::WString(visText.c_str()));
     }
-    movie.SetVariable("_root.DAOTransmog_Browser.herInfo.lbl.TextField.text", dao::gui::Value::WString(herText.c_str()));
+    else
+    {
+        std::wstring herText = L"Heraldry: Default / None";
+        if (curSlot.heraldry != 0)
+        {
+            if (const auto *her = catalog::FindHeraldry(curSlot.heraldry))
+            {
+                herText = L"Heraldry: " + her->label;
+            }
+            else
+            {
+                herText = L"Heraldry: ID " + std::to_wstring(curSlot.heraldry);
+            }
+        }
+        movie.SetVariable("_root.DAOTransmog_Browser.herInfo.lbl.TextField.text", dao::gui::Value::WString(herText.c_str()));
+    }
 }
 
 } // namespace
@@ -474,9 +518,36 @@ void Init()
 
             const auto &picked = rows[itemIdx];
             auto cur = GetStagedSlotOverride(charId, g_selectedSlot);
-            cur.mode = picked.mode;
-            cur.baseItem = picked.baseItem;
-            cur.variation = picked.variation;
+            if (g_selectedSlot == catalog::Slot::Helmet)
+            {
+                if (picked.mode == state::SlotMode::Override)
+                {
+                    cur.mode = (cur.mode == state::SlotMode::HideDialogue) ? state::SlotMode::HideDialogue
+                                                                          : state::SlotMode::Override;
+                    cur.baseItem = picked.baseItem;
+                    cur.variation = picked.variation;
+                }
+                else if (picked.mode == state::SlotMode::Real)
+                {
+                    cur.mode = state::SlotMode::Real;
+                    cur.baseItem = 0xFFFF;
+                    cur.variation = 0xFF;
+                }
+                else if (picked.mode == state::SlotMode::HideDialogue)
+                {
+                    cur.mode = state::SlotMode::HideDialogue;
+                }
+                else if (picked.mode == state::SlotMode::HideSlot)
+                {
+                    cur.mode = state::SlotMode::HideSlot;
+                }
+            }
+            else
+            {
+                cur.mode = picked.mode;
+                cur.baseItem = picked.baseItem;
+                cur.variation = picked.variation;
+            }
 
             ApplyStagedSlotOverride(charId, g_selectedSlot, cur);
             RefreshPaperdoll(charId);
@@ -575,7 +646,7 @@ void Init()
         }
     });
 
-    // FSCommand: Cycle Heraldry (-1 or 1)
+    // FSCommand: Cycle Heraldry (-1 or 1) OR Cycle Helmet Visibility when on Helmet slot
     dao::gui::OnFSCommand("DAOTransmog_Her", [](void *, std::string_view args) {
         try
         {
@@ -583,6 +654,58 @@ void Init()
             const auto charId = CurrentCharacter();
             if (charId == dao::kInvalidObject)
             {
+                return;
+            }
+
+            if (g_selectedSlot == catalog::Slot::Helmet)
+            {
+                auto cur = GetStagedSlotOverride(charId, g_selectedSlot);
+                // 3-way cycle:
+                // 0: Always Show (Override if baseItem != 0xFFFF && baseItem != 0, else Real)
+                // 1: Hide in Dialogue (HideDialogue)
+                // 2: Always Hide (HideSlot)
+                int currentModeIndex = 0;
+                if (cur.mode == state::SlotMode::HideDialogue)
+                {
+                    currentModeIndex = 1;
+                }
+                else if (cur.mode == state::SlotMode::HideSlot)
+                {
+                    currentModeIndex = 2;
+                }
+                else
+                {
+                    currentModeIndex = 0;
+                }
+
+                int nextModeIndex = (currentModeIndex + delta) % 3;
+                if (nextModeIndex < 0)
+                {
+                    nextModeIndex += 3;
+                }
+
+                if (nextModeIndex == 1)
+                {
+                    cur.mode = state::SlotMode::HideDialogue;
+                }
+                else if (nextModeIndex == 2)
+                {
+                    cur.mode = state::SlotMode::HideSlot;
+                }
+                else
+                {
+                    cur.mode = (cur.baseItem != 0xFFFF && cur.baseItem != 0) ? state::SlotMode::Override
+                                                                           : state::SlotMode::Real;
+                }
+
+                ApplyStagedSlotOverride(charId, g_selectedSlot, cur);
+                RefreshPaperdoll(charId, /*fullRebuild=*/false);
+
+                auto movie = dao::gui::ScreenMovie(L"Inventory");
+                if (movie)
+                {
+                    RefreshBrowserUI(*movie, charId);
+                }
                 return;
             }
 
@@ -757,12 +880,19 @@ void Init()
                 helm.mode = state::SlotMode::HideSlot;
                 break;
             case state::SlotMode::HideSlot:
-                helm.mode = state::SlotMode::Real;
+                helm.mode = (helm.baseItem != 0xFFFF && helm.baseItem != 0) ? state::SlotMode::Override
+                                                                           : state::SlotMode::Real;
                 break;
             }
-            RefreshPaperdoll(charId, /*fullRebuild=*/true);
+            RefreshPaperdoll(charId, /*fullRebuild=*/false);
             portrait::RefreshPortrait(charId);
             spdlog::info("[DAOTransmog::Gui] Toggled helmet visibility mode to {}", static_cast<int>(helm.mode));
+
+            auto movie = dao::gui::ScreenMovie(L"Inventory");
+            if (movie && g_browserVisible)
+            {
+                RefreshBrowserUI(*movie, charId);
+            }
         }
     });
 

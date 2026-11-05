@@ -197,6 +197,33 @@ void ApplyTransmogToAppearance(dao::ObjectId targetId, void *creature, void *app
                 materialDwords[i] = 0xFFFFFFFF;
                 tintDwords[i] = 0xFFFFFFFF;
             }
+            else if (ovr.baseItem != 0xFFFF && ovr.baseItem != 0)
+            {
+                if (!config::RequireEquipped() || isEquipped)
+                {
+                    baseItemWords[i] = ovr.baseItem;
+                    if (ovr.variation != 0xFF)
+                    {
+                        variationBytes[i] = ovr.variation;
+                    }
+                    if (ovr.material != 0xFF)
+                    {
+                        materialDwords[i] = static_cast<std::uint32_t>(ovr.material);
+                    }
+                    if (ovr.heraldry != 0)
+                    {
+                        heraldryBytes[i] = static_cast<std::uint8_t>(ovr.heraldry);
+                    }
+                }
+                else
+                {
+                    baseItemWords[i] = 0xFFFF;
+                    variationBytes[i] = 0xFF;
+                    heraldryBytes[i] = 0;
+                    materialDwords[i] = 0xFFFFFFFF;
+                    tintDwords[i] = 0xFFFFFFFF;
+                }
+            }
         }
     }
 

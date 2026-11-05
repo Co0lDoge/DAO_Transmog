@@ -270,7 +270,7 @@ def build_actions():
     init_body += make_widget(
         browser_parts, "herInfo", 38,
         38.0, 382.0, 210.0, 22.0,
-        "Heraldry: Default", None, "",
+        "Heraldry: Default", "DAOTransmog_Her", "1",
         bg_col=0x140D08, bg_alpha=90.0, border_col=0x5A4628
     )
     init_body += make_widget(
