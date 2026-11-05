@@ -4,9 +4,11 @@
 #include "ContextRules.h"
 #include "SafeMode.h"
 #include "State.h"
+#include "dao/Addresses.h"
 #include "dao/ClientExoApp.h"
 #include "dao/Hook.h"
 #include "dao/Log.h"
+#include "dao/Module.h"
 #include "dao/Objects.h"
 #include "dao/Party.h"
 #include "dao/core/Relocate.h"
@@ -68,24 +70,14 @@ void ApplyTransmogToAppearance(dao::ObjectId targetId, void *creature, void *app
         }
     }
 
-    // Native CAppearance and Equipment helper functions
-    using GetItemInSlotFn = void *(__fastcall *)(void *slots, int edx, int invSlot);
-    auto getItemInSlot = reinterpret_cast<GetItemInSlotFn>(dao::core::Relocate(0x007F4EA0, dao::Module::Base()));
+    // Engine function types for querying equipped items:
+    // SmartData::Attribute::Get (Attribute at creature + 0xBE0 returns Equipment holder)
+    // SlotItemLocation::ItemIn (holder + 0x24 returns CCItem pointer or 0)
+    using GetAttrFn = std::uintptr_t(__fastcall *)(std::uintptr_t, int);
+    using ItemInFn = std::uintptr_t(__fastcall *)(std::uintptr_t, int, std::int32_t);
 
-    using SetSlotFromItemFn = void(__fastcall *)(void *appr, int edx, int invSlot, void *item);
-    auto setSlotFromItem = reinterpret_cast<SetSlotFromItemFn>(dao::core::Relocate(0x00748DA0, dao::Module::Base()));
-
-    // Equipment pointer at creature + 0xBE0 + 0xC; SlotItemLocation is at equipment + 0x24
-    void *equipment = nullptr;
-    void *slots = nullptr;
-    if (targetCreature != nullptr)
-    {
-        equipment = *reinterpret_cast<void **>(reinterpret_cast<std::byte *>(targetCreature) + 0xBE0 + 0xC);
-        if (equipment != nullptr)
-        {
-            slots = static_cast<std::byte *>(equipment) + 0x24;
-        }
-    }
+    const auto getAttrAddr = dao::Module::Address(dao::addr::kSmartDataAttribute_Get);
+    const auto itemInAddr = dao::Module::Address(dao::addr::kSlotItemLocation_ItemIn);
 
     // CAppearance struct offsets:
     // +0x12A: unsigned short slotBaseItem[7]
@@ -102,59 +94,63 @@ void ApplyTransmogToAppearance(dao::ObjectId targetId, void *creature, void *app
     const auto *st = state::Find(targetId);
     const auto *preset = (st != nullptr) ? &st->CurrentPreset() : nullptr;
 
-    auto &snapshot = g_vanillaSnapshots[targetId];
-
-    // For all 7 appearance slots:
-    // 1. First restore baseline from actual equipped item if available, or snapshot if available
     for (std::size_t i = 0; i < 7; ++i)
     {
         const int invSlot = kSlotToInvSlot[i];
 
-        // Step 1: Query actual real equipped item from SlotItemLocation (equipment + 0x24)
-        void *realItem = nullptr;
-        if (slots != nullptr)
+        std::uintptr_t realItem = 0;
+        bool hasEquipmentHolder = false;
+        if (targetCreature != nullptr && getAttrAddr != 0 && itemInAddr != 0)
         {
-            realItem = getItemInSlot(slots, 0, invSlot);
-        }
-
-        // Script API fallback if SlotItemLocation query returned null
-        if (realItem == nullptr && targetId != dao::kInvalidObject)
-        {
-            const auto realItemId = dao::script::api::GetItemInEquipSlot(invSlot, targetId);
-            if (realItemId != dao::kInvalidObject)
+            const std::uintptr_t holder =
+                reinterpret_cast<GetAttrFn>(getAttrAddr)(reinterpret_cast<std::uintptr_t>(targetCreature) + 0xBE0, 0);
+            if (holder != 0)
             {
-                realItem = app->GetObjectById(realItemId);
+                hasEquipmentHolder = true;
+                realItem = reinterpret_cast<ItemInFn>(itemInAddr)(holder + 0x24, 0, invSlot);
             }
         }
 
-        if (realItem != nullptr)
+        // Script API fallback if direct member query returned 0 and target is valid
+        if (realItem == 0 && targetId != dao::kInvalidObject)
         {
-            setSlotFromItem(appearance, 0, invSlot, realItem);
-
-            // Update vanilla snapshot from live equipped item
-            snapshot.baseItem[i] = baseItemWords[i];
-            snapshot.variation[i] = variationBytes[i];
-            snapshot.heraldry[i] = heraldryBytes[i];
-            snapshot.material[i] = materialDwords[i];
-            snapshot.tint[i] = tintDwords[i];
-            snapshot.valid = true;
-        }
-        else if (preset != nullptr && i < preset->armorSlots.size() &&
-                 preset->armorSlots[i].mode == state::SlotMode::Real && snapshot.valid)
-        {
-            // Restore from known vanilla snapshot if live item lookup was empty
-            baseItemWords[i] = snapshot.baseItem[i];
-            variationBytes[i] = snapshot.variation[i];
-            heraldryBytes[i] = snapshot.heraldry[i];
-            materialDwords[i] = snapshot.material[i];
-            tintDwords[i] = snapshot.tint[i];
+            const auto scriptItemId = dao::script::api::GetItemInEquipSlot(invSlot, targetId);
+            if (scriptItemId != dao::kInvalidObject && app->GetObjectById(scriptItemId) != nullptr)
+            {
+                realItem = reinterpret_cast<std::uintptr_t>(app->GetObjectById(scriptItemId));
+            }
         }
 
-        // Step 2: Apply transmog override if present
-        if (preset != nullptr && i < preset->armorSlots.size())
+        // A slot is genuinely unequipped if the creature has an equipment container but this slot is empty (0)
+        const bool genuineUnequipped = hasEquipmentHolder && (realItem == 0);
+
+        // An item is considered equipped if realItem is present OR if vanilla appearance already had an item
+        // (crucial for preview paperdoll and initial load frames where equipment structure is detached/transitioning)
+        const bool isEquipped = genuineUnequipped ? false : ((realItem != 0) || (baseItemWords[i] != 0xFFFF));
+
+        if (preset == nullptr || i >= preset->armorSlots.size())
         {
-            const auto &ovr = preset->armorSlots[i];
-            if (ovr.mode == state::SlotMode::Override)
+            continue;
+        }
+
+        const auto &ovr = preset->armorSlots[i];
+        if (ovr.mode == state::SlotMode::Real)
+        {
+            // Vanilla mode: NEVER overwrite authentic appearance!
+            // Only if the creature genuinely unequipped the item, ensure appearance slot is cleared
+            if (genuineUnequipped)
+            {
+                baseItemWords[i] = 0xFFFF;
+                variationBytes[i] = 0xFF;
+                heraldryBytes[i] = 0;
+                materialDwords[i] = 0xFFFFFFFF;
+                tintDwords[i] = 0xFFFFFFFF;
+            }
+            continue;
+        }
+        else if (ovr.mode == state::SlotMode::Override)
+        {
+            if (!config::RequireEquipped() || isEquipped)
             {
                 if (ovr.baseItem != 0xFFFF)
                 {
@@ -173,18 +169,33 @@ void ApplyTransmogToAppearance(dao::ObjectId targetId, void *creature, void *app
                     heraldryBytes[i] = static_cast<std::uint8_t>(ovr.heraldry);
                 }
             }
-            else if (ovr.mode == state::SlotMode::HideSlot)
+            else
+            {
+                // Slot is unequipped and RequireEquipped() is true: do NOT show transmog!
+                baseItemWords[i] = 0xFFFF;
+                variationBytes[i] = 0xFF;
+                heraldryBytes[i] = 0;
+                materialDwords[i] = 0xFFFFFFFF;
+                tintDwords[i] = 0xFFFFFFFF;
+            }
+        }
+        else if (ovr.mode == state::SlotMode::HideSlot)
+        {
+            baseItemWords[i] = 0xFFFF;
+            variationBytes[i] = 0xFF;
+            heraldryBytes[i] = 0;
+            materialDwords[i] = 0xFFFFFFFF;
+            tintDwords[i] = 0xFFFFFFFF;
+        }
+        else if (ovr.mode == state::SlotMode::HideDialogue)
+        {
+            if (context::ShouldHideHelmet(targetId, ovr.mode))
             {
                 baseItemWords[i] = 0xFFFF;
                 variationBytes[i] = 0xFF;
-            }
-            else if (ovr.mode == state::SlotMode::HideDialogue)
-            {
-                if (context::ShouldHideHelmet(targetId, ovr.mode))
-                {
-                    baseItemWords[i] = 0xFFFF;
-                    variationBytes[i] = 0xFF;
-                }
+                heraldryBytes[i] = 0;
+                materialDwords[i] = 0xFFFFFFFF;
+                tintDwords[i] = 0xFFFFFFFF;
             }
         }
     }

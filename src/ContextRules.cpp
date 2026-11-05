@@ -130,8 +130,8 @@ void Init()
             return;
         }
 
-        // Slot 0 is INVENTORY_SLOT_CHEST
-        if (change.slot == 0)
+        // Slot 4 is INVENTORY_SLOT_CHEST
+        if (change.slot == 4)
         {
             g_hasChestEquipped[change.creature] = true;
         }
@@ -143,7 +143,8 @@ void Init()
             return;
         }
 
-        if (change.slot == 0)
+        // Slot 4 is INVENTORY_SLOT_CHEST
+        if (change.slot == 4)
         {
             g_hasChestEquipped[change.creature] = false;
         }

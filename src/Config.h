@@ -82,6 +82,7 @@ void Set(const Settings &s);
 
 // Helper convenience accessors
 inline bool Enabled() { return true; }
+inline bool RequireEquipped() { return Get().requireEquipped; }
 inline bool BypassDisguises() { return Get().bypassPlotDisguise; }
 inline bool HideOnNaked() { return Get().suspendWhenCaptured; }
 inline bool AlwaysHideInDialogues() { return Get().helmetRule == HelmetVisibilityRule::HideInDialogues; }

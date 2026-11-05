@@ -28,6 +28,7 @@ std::set<std::pair<std::uint16_t, std::uint8_t>> g_unlockedAppearances;
 std::optional<CharacterState> g_pendingHeroState;
 std::unordered_map<dao::ObjectId, CharacterState> g_pendingById;
 std::unordered_map<std::string, CharacterState> g_pendingByTag;
+bool g_loadedSincePregame = false;
 
 std::string WideToUtf8(std::wstring_view wstr)
 {
@@ -187,6 +188,7 @@ void Init()
 
     // Co-save hook: load state from <SaveSlot>\DAOTransmog.daolib
     dao::saves::OnGameLoaded([](const std::optional<dao::saves::Slot> &save) {
+        g_loadedSincePregame = true;
         ClearAll();
 
         // Ensure catalog is scanned now that game tables are loaded into memory
@@ -196,10 +198,6 @@ void Init()
         if (save)
         {
             coSaveFile = save->File("DAOTransmog");
-        }
-        else
-        {
-            coSaveFile = ResolveResumeCoSavePath();
         }
 
         std::error_code ec;
@@ -227,6 +225,48 @@ void Init()
     });
 
     LoadUnlockedList();
+}
+
+void NotifyInPregame()
+{
+    g_loadedSincePregame = false;
+}
+
+void RestoreFromResumeIfNeeded()
+{
+    if (g_loadedSincePregame)
+    {
+        return;
+    }
+    g_loadedSincePregame = true;
+
+    ClearAll();
+    catalog::EnsureScanned();
+
+    const std::filesystem::path coSaveFile = ResolveResumeCoSavePath();
+    std::error_code ec;
+    if (!coSaveFile.empty() && std::filesystem::exists(coSaveFile, ec))
+    {
+        std::ifstream in(coSaveFile, std::ios::binary);
+        if (in)
+        {
+            const std::string jsonStr((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            if (FromJson(jsonStr))
+            {
+                spdlog::info("[DAOTransmog::State] Restored appearance state via Resume fallback from {}",
+                             coSaveFile.string());
+                SetNeedsWorldRefresh(true);
+                return;
+            }
+            else
+            {
+                spdlog::warn("[DAOTransmog::State] Failed to parse Resume appearance state JSON from {}",
+                             coSaveFile.string());
+            }
+        }
+    }
+
+    spdlog::info("[DAOTransmog::State] No DAOTransmog.daolib found for Resume fallback; keeping vanilla");
 }
 
 void ResolvePending(dao::ObjectId id, std::string_view tag)

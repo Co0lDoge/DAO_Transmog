@@ -84,6 +84,9 @@ CharacterState *FindByTag(std::string_view tag);
 void ResolvePending(dao::ObjectId id, std::string_view tag = {});
 void Remove(dao::ObjectId id);
 void ClearAll();
+// Resume-button fallback: restores the newest co-save if DAOLib never reported a loaded save this session.
+void NotifyInPregame();
+void RestoreFromResumeIfNeeded();
 
 // Staging & preset workflows
 void BeginStaging(dao::ObjectId id);

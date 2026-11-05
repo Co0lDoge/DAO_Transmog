@@ -47,7 +47,7 @@ void Init()
     // 1. Register Game Options Section: "Transmog"
     std::vector<dao::options::Toggle> toggles = {
         {
-            .name = L"DAOTransmog_RequireEquipped",
+            .name = L"DAOTransmogRequireEquipped",
             .label = Get(StrId::RequireEquippedItem, L"Require Equipped Item in Slot"),
             .tooltip = Get(StrId::RequireEquippedItemTooltip,
                            L"Only applies transmog appearance if an item is equipped in that slot."),
@@ -56,7 +56,7 @@ void Init()
             .defaultValue = true,
         },
         {
-            .name = L"DAOTransmog_BypassPlotDisguise",
+            .name = L"DAOTransmogBypassPlotDisguise",
             .label = Get(StrId::BypassPlotDisguise, L"Bypass for Plot / Disguise Gear"),
             .tooltip = Get(StrId::BypassPlotDisguiseTooltip,
                            L"Temporarily suspends transmog when plot disguises are equipped."),
@@ -65,7 +65,7 @@ void Init()
             .defaultValue = true,
         },
         {
-            .name = L"DAOTransmog_SuspendWhenCaptured",
+            .name = L"DAOTransmogSuspendWhenCaptured",
             .label = Get(StrId::SuspendWhenCaptured, L"Suspend When Captured / Stripped"),
             .tooltip = Get(StrId::SuspendWhenCapturedTooltip,
                            L"Suspends appearance override when stripped in prison sequences."),
@@ -77,7 +77,7 @@ void Init()
 
     std::vector<dao::options::Choice> choices = {
         {
-            .name = L"DAOTransmog_WeaponCompat",
+            .name = L"DAOTransmogWeaponCompat",
             .label = Get(StrId::WeaponCompatFilter, L"Weapon Compatibility Filter"),
             .tooltip = L"",
             .values = {Get(StrId::MatchingGrip, L"Matching Grip"), Get(StrId::SameCombatStyle, L"Same Combat Style")},
@@ -91,7 +91,7 @@ void Init()
             .defaultValue = 0,
         },
         {
-            .name = L"DAOTransmog_UnlockMode",
+            .name = L"DAOTransmogUnlockMode",
             .label = Get(StrId::AppearanceUnlockMode, L"Appearance Unlock Mode"),
             .tooltip = L"",
             .values = {Get(StrId::AllAppearances, L"All Valid Appearances"), Get(StrId::UnlockedOnly, L"Unlocked Only")},
@@ -105,7 +105,7 @@ void Init()
             .defaultValue = 0,
         },
         {
-            .name = L"DAOTransmog_SceneRule",
+            .name = L"DAOTransmogSceneRule",
             .label = Get(StrId::SceneRule, L"Scene Rule (Cutscenes & Dialogues)"),
             .tooltip = L"",
             .values = {Get(StrId::KeepTransmog, L"Keep Transmog"), Get(StrId::HideInDialogues, L"Hide Helmets Only"),
@@ -120,7 +120,7 @@ void Init()
             .defaultValue = 0,
         },
         {
-            .name = L"DAOTransmog_HelmetVisibility",
+            .name = L"DAOTransmogHelmetVisibility",
             .label = Get(StrId::HelmetVisibility, L"Helmet Visibility"),
             .tooltip = L"",
             .values = {Get(StrId::PerSlotSetting, L"Per-Slot Setting"),
@@ -136,7 +136,7 @@ void Init()
             .defaultValue = 0,
         },
         {
-            .name = L"DAOTransmog_BackWeapons",
+            .name = L"DAOTransmogBackWeapons",
             .label = Get(StrId::BackStrappedWeapons, L"Back-Strapped Weapons in Dialogue"),
             .tooltip = L"",
             .values = {Get(StrId::ShowVanilla, L"Show (Vanilla)"), Get(StrId::HideStaves2H, L"Hide Staves & 2H"),
@@ -151,7 +151,7 @@ void Init()
             .defaultValue = 0,
         },
         {
-            .name = L"DAOTransmog_CampBehavior",
+            .name = L"DAOTransmogCampBehavior",
             .label = Get(StrId::CampBehavior, L"Party Camp Behavior"),
             .tooltip = L"",
             .values = {Get(StrId::KeepActive, L"Keep Active"),
@@ -167,7 +167,7 @@ void Init()
             .defaultValue = 0,
         },
         {
-            .name = L"DAOTransmog_RuneVfx",
+            .name = L"DAOTransmogRuneVfx",
             .label = Get(StrId::RuneVfx, L"Weapon Enchantment / Rune VFX"),
             .tooltip = L"",
             .values = {Get(StrId::PerSlotSetting, L"Per-Slot (Default: Show)"),
@@ -183,7 +183,7 @@ void Init()
             .defaultValue = 0,
         },
         {
-            .name = L"DAOTransmog_PortraitAppearance",
+            .name = L"DAOTransmogPortraitAppearance",
             .label = Get(StrId::PortraitAppearance, L"2D Mini-Portrait Appearance"),
             .tooltip = L"",
             .values = {Get(StrId::ShowTransmogSyncOnApply, L"Show Transmog (Sync on Apply)"),
@@ -199,12 +199,18 @@ void Init()
         },
     };
 
-    dao::options::AddSection(Get(StrId::TransmogTitle, L"Transmog"), std::move(toggles), std::move(choices));
+    // 1. Register Game Options Section: "Transmog"
+    // The Game tab has exactly 5 free rows in the left column under Gameplay (heading = 2 rows, 3 toggles = 3 rows).
+    // The section MUST fit within 5 rows, otherwise DAOLib's options movie injector drops it due to NoRoom.
+    const bool secAdded = dao::options::AddSection(
+        Get(StrId::TransmogTitle, L"Transmog"), std::move(toggles), {}, dao::options::Column::Left,
+        dao::options::Tab::Game);
+    spdlog::info("[DAOTransmog] Register Options section: added={}", secAdded);
 
     // 2. Register Hotkeys in Options -> Controls
-    dao::input::RegisterAction(
+    const bool hAdded = dao::input::RegisterAction(
         {
-            .name = L"DAOTransmog_ToggleHelmet",
+            .name = L"DAOTransmogToggleHelmet",
             .label = Get(StrId::ToggleHelmetVis, L"Toggle Helmet Visibility"),
             .key = dao::input::Key::H,
             .section = Get(StrId::TransmogTitle, L"Transmog"),
@@ -217,9 +223,9 @@ void Init()
             }
         });
 
-    dao::input::RegisterAction(
+    const bool pAdded = dao::input::RegisterAction(
         {
-            .name = L"DAOTransmog_CyclePreset",
+            .name = L"DAOTransmogCyclePreset",
             .label = Get(StrId::CyclePreset, L"Cycle Outfit Preset"),
             .key = dao::input::Key::P,
             .section = Get(StrId::TransmogTitle, L"Transmog"),
@@ -232,9 +238,9 @@ void Init()
             }
         });
 
-    dao::input::RegisterAction(
+    const bool tAdded = dao::input::RegisterAction(
         {
-            .name = L"DAOTransmog_ToggleTransmog",
+            .name = L"DAOTransmogToggleTransmog",
             .label = Get(StrId::TransmogTitle, L"Toggle Transmog Menu"),
             .key = dao::input::Key::T,
             .modes = {dao::GameMode::Explore, dao::GameMode::Combat, dao::GameMode::Gui},
@@ -248,7 +254,7 @@ void Init()
             }
         });
 
-    spdlog::info("[DAOTransmog] Config options and keybindings registered");
+    spdlog::info("[DAOTransmog] Config options and keybindings registered (H={}, P={}, T={})", hAdded, pAdded, tAdded);
 }
 
 } // namespace transmog::config

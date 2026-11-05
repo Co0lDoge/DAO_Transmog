@@ -46,4 +46,9 @@ TEST_CASE("Transmog bypass rules", "[context]")
             CHECK(ShouldBypassTransmog(testChar) == false);
         }
     }
+
+    SECTION("RequireEquipped configuration default")
+    {
+        CHECK(transmog::config::RequireEquipped() == true);
+    }
 }
