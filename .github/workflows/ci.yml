@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    name: Build & Test (x86 Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout DAO_Transmog
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Checkout DAOLib
+        uses: actions/checkout@v4
+        with:
+          repository: Whocares66-Dev/DAOLib
+          path: DAOLib-master
+          submodules: recursive
+
+      - name: Setup MSVC (x86)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Setup Ninja
+        uses: ashutoshvarma/setup-ninja@master
+        with:
+          version: 1.11.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set DAOLIB_DIR
+        shell: bash
+        run: echo "DAOLIB_DIR=$GITHUB_WORKSPACE/DAOLib-master" >> $GITHUB_ENV
+
+      - name: Configure CMake
+        run: >
+          cmake -B build
+          -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DDAOLIB_DIR="${{ github.workspace }}/DAOLib-master"
+          -DVCPKG_TARGET_TRIPLET=x86-windows-static-md
+
+      - name: Build DAOTransmog
+        run: cmake --build build --config RelWithDebInfo
+
+      - name: Run Unit Tests
+        run: .\build\transmog_tests.exe
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DAOTransmog-Release
+          path: build/daolib/plugins/DAOTransmog/

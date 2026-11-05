@@ -1,0 +1,47 @@
+# ====================================================================
+# DAOTransmog .gitignore
+# ====================================================================
+
+# Build directories
+build/
+bin/
+out/
+dist/
+*.dir/
+
+# vcpkg dependencies
+vcpkg_installed/
+
+# Visual Studio / MSVC artifacts
+.vs/
+*.user
+*.suo
+*.ipch
+*.obj
+*.pdb
+*.ilk
+*.idb
+*.exp
+*.lib
+*.dll
+*.exe
+
+# Keep required binary assets in assets/
+!assets/*.swf
+!assets/tlk/*.tlk
+
+# Python compilation cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.venv/
+
+# Editor / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+*~

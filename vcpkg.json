@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "dao-transmog",
+  "version-string": "1.0.0",
+  "dependencies": [
+    {
+      "name": "directxtex",
+      "default-features": false
+    },
+    "detours",
+    "spdlog",
+    "nlohmann-json",
+    "catch2"
+  ]
+}

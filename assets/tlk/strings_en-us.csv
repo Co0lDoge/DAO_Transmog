@@ -1,0 +1,59 @@
+id,text
+1,Transmog
+2,Transmog Wardrobe
+3,Wardrobe & Appearance
+4,Travel
+5,City
+6,Camp
+7,Always Show
+8,Hide in Dialogues
+9,Always Hide
+10,<Use Equipped Item's Look>
+11,<Hide Slot / Bare Body>
+12,Apply Outfit
+13,Reset Slot
+14,Reset Outfit
+15,Match Material to Chest
+16,Toggle Helmet Visibility
+17,Cycle Outfit Preset
+18,Appearance customization is not available for this companion.
+19,Plot Disguise Active — Transmog temporarily suspended for this slot.
+20,Require Equipped Item in Slot
+21,Only applies transmog appearance if an item is equipped in that slot.
+22,Bypass for Plot / Disguise Gear
+23,Temporarily suspends transmog when plot disguises are equipped.
+24,Suspend When Captured / Stripped
+25,Suspends appearance override when stripped in prison sequences.
+26,Weapon Compatibility Filter
+27,Appearance Unlock Mode
+28,Scene Rule (Cutscenes & Dialogues)
+29,Helmet Visibility
+30,Back-Strapped Weapons in Dialogue
+31,Party Camp Behavior
+32,Weapon Enchantment / Rune VFX
+33,2D Mini-Portrait Appearance
+34,All Valid Appearances
+35,Unlocked Only
+36,Keep Transmog
+37,Show Real Gear
+38,Matching Grip
+39,Same Combat Style
+40,Show (Vanilla)
+41,Hide Staves & 2H
+42,Hide All
+43,Keep Active
+44,Auto-Switch to Camp Preset (3)
+45,Show Transmog (Sync on Apply)
+46,Show Real Equipped Gear
+47,Per-Slot Setting
+48,Suppress on Transmog
+49,Rune VFX: Show
+50,Rune VFX: Hide
+51,Slot is currently unequipped — appearance will activate when an item is equipped.
+52,Sync All
+53,Jump >>
+54,Return to Backpack
+55,Transmog Mode: ON
+56,Outfit Preset: Travel
+57,Outfit Preset: City
+58,Outfit Preset: Camp
