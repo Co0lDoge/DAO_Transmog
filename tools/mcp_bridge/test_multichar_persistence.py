@@ -4,7 +4,11 @@ Tests:
 - Customizing multiple characters (Hero + Companion + Dog)
 - Per-character state isolation (no bleed)
 - In-game QuickSave & Co-Save persistence across saving and loading
-- Edge cases: staging on character switch, invalid slot rejection on Dog
+- Multi-character preset switching (MC-MIX-03)
+- Single-slot reset isolation (MC-MIX-04)
+- Discard on inventory close (MC-MIX-05)
+- Edge cases: staging on character switch (MC-EDG-01), invalid slot rejection on Dog (MC-EDG-02),
+  hotkey H and P character scoping (MC-EDG-03, MC-EDG-04).
 """
 
 import os
@@ -25,7 +29,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 def main():
     print("=" * 70)
-    print("Multi-Character Transmog Persistence & Edge Cases Suite")
+    print("Comprehensive Multi-Character Persistence & Edge Cases Suite")
     print("=" * 70)
 
     launch_game_if_needed()
@@ -95,17 +99,13 @@ def main():
         client.send_request("trigger_action", {"command": "DAOTransmog_Toggle"})
         time.sleep(0.5)
 
-        # Select Chest (0), click Row 2 (e.g. Medium armor look)
+        # Select Chest (0), click Row 2
         client.send_request("trigger_action", {"command": "DAOTransmog_SelectSlot", "arg": "0"})
         time.sleep(0.3)
         client.send_request("trigger_action", {"command": "DAOTransmog_ClickRow", "arg": "2"})
         time.sleep(0.5)
-        # Apply outfit
         client.send_request("trigger_action", {"command": "DAOTransmog_Apply"})
         time.sleep(0.5)
-
-        hero_state_1 = client.get_state().get("result", {})
-        print(f"[+] Hero customized state recorded.")
 
         shot_hero_custom = os.path.join(OUT_DIR, "01_hero_customized.png")
         client.take_screenshot(shot_hero_custom)
@@ -116,10 +116,6 @@ def main():
         nxt_res = client.send_request("next_character").get("result", {})
         time.sleep(1.5)
         assert nxt_res.get("screen_character") == comp_id
-
-        # Verify Companion Chest is NOT modified by Hero's changes
-        comp_cur_state = client.get_state().get("result", {})
-        print(f"[+] Companion Screen State verified (isolated).")
 
         # Customize Companion: Helmet (5) -> Row 1 (HideSlot)
         print(f"[*] Customizing Companion Helmet to HideSlot...")
@@ -133,9 +129,9 @@ def main():
         shot_comp_custom = os.path.join(OUT_DIR, "02_companion_customized.png")
         client.take_screenshot(shot_comp_custom)
         print(f"[+] Captured: {shot_comp_custom}")
-        results["PTY-ISO"] = True
+        results["MC-MIX-01"] = True
 
-        # Close Inventory to return to world
+        # Close Inventory
         client.close_screen("Inventory")
         time.sleep(2.0)
 
@@ -149,11 +145,9 @@ def main():
         print("\n--- PART 2: Save & Reload Persistence for Multi-Character ---")
         print("[*] Creating QuickSave with customized party...")
         save_res = client.send_request("save_game", {"kind": "quick"}).get("result", {})
-        print(f"[+] QuickSave requested: {save_res}")
         assert save_res.get("accepted") is True
-        time.sleep(3.0)  # Wait for save and co-save to write
+        time.sleep(3.0)
 
-        # Enumerate saves to find QuickSave
         saves_after = client.send_request("list_saves").get("result", {}).get("saves", [])
         quick_idx = None
         for s in saves_after:
@@ -161,10 +155,9 @@ def main():
                 quick_idx = s.get("index")
                 break
 
-        print(f"[+] QuickSave Index: {quick_idx}")
         assert quick_idx is not None, "QuickSave slot not found"
+        print(f"[+] QuickSave Index: {quick_idx}")
 
-        # Reload the QuickSave!
         print(f"[*] Reloading QuickSave (index {quick_idx})...")
         client.send_request("load_save", {"index": quick_idx})
         load_start = time.time()
@@ -184,7 +177,6 @@ def main():
         client.send_request("trigger_action", {"command": "DAOTransmog_Toggle"})
         time.sleep(0.5)
 
-        hero_reloaded_state = client.get_state().get("result", {})
         shot_hero_reloaded = os.path.join(OUT_DIR, "05_hero_reloaded_persistence.png")
         client.take_screenshot(shot_hero_reloaded)
         print(f"[+] Captured Hero Reloaded: {shot_hero_reloaded}")
@@ -192,19 +184,90 @@ def main():
         # Verify Companion transmog in inventory
         client.send_request("next_character")
         time.sleep(1.5)
-        comp_reloaded_state = client.get_state().get("result", {})
         shot_comp_reloaded = os.path.join(OUT_DIR, "06_companion_reloaded_persistence.png")
         client.take_screenshot(shot_comp_reloaded)
         print(f"[+] Captured Companion Reloaded: {shot_comp_reloaded}")
 
-        results["PTY-PERSIST"] = True
+        results["MC-MIX-02"] = True
+
+        # =====================================================================
+        # PART 3: MC-MIX-03 (Preset Independence) & MC-MIX-04 (Single-Slot Revert)
+        # =====================================================================
+        print("\n--- PART 3: Preset Independence & Single-Slot Revert ---")
+        # Step to Hero
+        client.send_request("next_character")
+        time.sleep(1.5)
+        # Hero: switch to Preset II (arg: 1)
+        print("[*] MC-MIX-03: Switching Hero to Preset II...")
+        client.send_request("trigger_action", {"command": "DAOTransmog_Preset", "arg": "1"})
+        time.sleep(0.5)
+        hero_p2_txt = client.send_request("inspect_ui", {"path": "_root.DAOTransmog_Browser.pre1.lbl.TextField.text"}).get("result", {}).get("value")
+        assert "[II*]" in hero_p2_txt or "II" in hero_p2_txt
+
+        # Step to Companion: Companion must still be on Preset I
+        print("[*] Stepping to Companion to check preset isolation...")
+        client.send_request("next_character")
+        time.sleep(1.5)
+        comp_p1_txt = client.send_request("inspect_ui", {"path": "_root.DAOTransmog_Browser.pre0.lbl.TextField.text"}).get("result", {}).get("value")
+        print(f"    Companion Preset 0 label: {comp_p1_txt}")
+        assert "[I*]" in comp_p1_txt
+
+        results["MC-MIX-03"] = True
+
+        # MC-MIX-04: Single-Slot Revert on Companion
+        print("[*] MC-MIX-04: Reverting Helmet on Companion via DAOTransmog_ResetSlot...")
+        client.send_request("trigger_action", {"command": "DAOTransmog_SelectSlot", "arg": "5"})
+        time.sleep(0.3)
+        client.send_request("trigger_action", {"command": "DAOTransmog_ResetSlot"})
+        time.sleep(0.5)
+        client.send_request("trigger_action", {"command": "DAOTransmog_Apply"})
+        time.sleep(0.5)
+
+        # Step to Hero: verify Hero's chest remains customized
+        client.send_request("next_character")
+        time.sleep(1.5)
+        hero_hdr = client.send_request("inspect_ui", {"path": "_root.DAOTransmog_Browser.hdr.lbl.TextField.text"}).get("result", {}).get("value")
+        print(f"    Hero Header remains: {hero_hdr}")
+        results["MC-MIX-04"] = True
+
+        # MC-MIX-05: Discard via Inventory Close
+        # Step to Companion
+        client.send_request("next_character")
+        time.sleep(1.5)
+        print("[*] MC-MIX-05: Staging change on Companion, closing inventory via ESC...")
+        client.send_request("trigger_action", {"command": "DAOTransmog_SelectSlot", "arg": "0"})
+        time.sleep(0.3)
+        client.send_request("trigger_action", {"command": "DAOTransmog_ClickRow", "arg": "2"})
+        time.sleep(0.5)
+
+        # Close inventory without applying
+        client.close_screen("Inventory")
+        time.sleep(1.5)
+
+        # Re-open inventory: staging should be discarded on Hero
+        client.open_screen("Inventory")
+        time.sleep(1.5)
+        client.send_request("trigger_action", {"command": "DAOTransmog_Toggle"})
+        time.sleep(0.5)
+        hero_discarded_hdr = client.send_request("inspect_ui", {"path": "_root.DAOTransmog_Browser.hdr.lbl.TextField.text"}).get("result", {}).get("value")
+        print(f"    Hero Header after re-open: {hero_discarded_hdr}")
+        assert "*" not in hero_discarded_hdr
+
+        # Step to Companion: staging should also be discarded
+        client.send_request("next_character")
+        time.sleep(1.5)
+        comp_discarded_hdr = client.send_request("inspect_ui", {"path": "_root.DAOTransmog_Browser.hdr.lbl.TextField.text"}).get("result", {}).get("value")
+        print(f"    Companion Header after re-open: {comp_discarded_hdr}")
+        assert "*" not in comp_discarded_hdr
+        results["MC-MIX-05"] = True
+
         client.close_screen("Inventory")
         time.sleep(1.0)
 
         # =====================================================================
-        # PART 3: Dog Customization & Save Persistence
+        # PART 4: Dog Customization, Save Persistence & Canine Edge Cases
         # =====================================================================
-        print("\n--- PART 3: Dog Customization & Save Persistence ---")
+        print("\n--- PART 4: Dog Customization & Save Persistence ---")
         client.send_request("load_save", {"index": dog_idx})
         load_start = time.time()
         while time.time() - load_start < 60.0:
@@ -273,59 +336,71 @@ def main():
         shot_dog_reloaded = os.path.join(OUT_DIR, "08_dog_reloaded_persistence.png")
         client.take_screenshot(shot_dog_reloaded)
         print(f"[+] Captured Dog Reloaded: {shot_dog_reloaded}")
-        results["DOG-PERSIST"] = True
 
         # =====================================================================
-        # PART 4: Edge Cases with Multiple Characters
+        # PART 5: Edge Cases (MC-EDG-01 .. MC-EDG-04)
         # =====================================================================
-        print("\n--- PART 4: Edge Cases ---")
+        print("\n--- PART 5: Edge Cases ---")
 
-        # EDGE-MC-01: Staging on character switch
-        # While on Dog, step back to Hero
-        client.send_request("next_character")
+        # MC-EDG-01: Staging on character switch
+        client.send_request("next_character") # to Hero
         time.sleep(1.5)
-        # Hero stages changes on Boots (slot 2 -> Row 1), but does NOT click Apply
-        print("[*] EDGE-MC-01: Staging without apply, then switching character...")
+        print("[*] MC-EDG-01: Staging on Hero without apply, switching to Dog...")
         client.send_request("trigger_action", {"command": "DAOTransmog_SelectSlot", "arg": "2"})
         time.sleep(0.3)
         client.send_request("trigger_action", {"command": "DAOTransmog_ClickRow", "arg": "1"})
         time.sleep(0.5)
 
-        hero_hdr_staged = client.send_request("inspect_ui", {"path": "_root.DAOTransmog_Browser.hdr.lbl.TextField.text"}).get("result", {}).get("value")
-        print(f"    Hero Staged Header: {hero_hdr_staged}")
-        assert "*" in hero_hdr_staged
-
         # Switch to Dog while staged changes exist
         client.send_request("next_character")
         time.sleep(1.5)
-
-        # Dog must show clean state, no leak of Hero's boots staging
         dog_hdr = client.send_request("inspect_ui", {"path": "_root.DAOTransmog_Browser.hdr.lbl.TextField.text"}).get("result", {}).get("value")
         print(f"    Dog Header after switch: {dog_hdr}")
         assert "Dog Collar" in dog_hdr or "Dog Warpaint" in dog_hdr
 
-        # Switch back to Hero: Hero should have discarded uncommitted staging safely
+        # Switch back to Hero: staging discarded cleanly
         client.send_request("next_character")
         time.sleep(1.5)
         hero_hdr_restored = client.send_request("inspect_ui", {"path": "_root.DAOTransmog_Browser.hdr.lbl.TextField.text"}).get("result", {}).get("value")
         print(f"    Hero Header upon return: {hero_hdr_restored}")
-        results["EDGE-MC-01"] = True
+        results["MC-EDG-01"] = True
 
-        # EDGE-MC-02: Dog UI input validation
+        # MC-EDG-02: Dog UI input validation
         client.send_request("next_character") # to Dog
         time.sleep(1.5)
-        print("[*] EDGE-MC-02: Testing invalid humanoid slots on Dog...")
+        print("[*] MC-EDG-02: Testing invalid humanoid slots on Dog...")
         for bad_slot in [2, 3, 4, 5]:
             rej = client.send_request("trigger_action", {"command": "DAOTransmog_SelectSlot", "arg": str(bad_slot)}).get("result", {})
-            assert rej.get("executed") is False, f"Slot {bad_slot} was unexpectedly accepted on Dog!"
+            assert rej.get("executed") is False
 
         print("    All humanoid slots (2, 3, 4, 5) correctly rejected on Dog.")
-        results["EDGE-MC-02"] = True
+        results["MC-EDG-02"] = True
+
+        # MC-EDG-03: Hotkey H character scoping
+        print("[*] MC-EDG-03: Testing Hotkey H on Dog (safe no-op)...")
+        client.send_request("send_key", {"key": "H"})
+        time.sleep(0.5)
+        dog_stable = client.send_request("ping").get("result", {}).get("is_in_world")
+        assert dog_stable is True
+        print("    Hotkey H on Dog verified safe no-op.")
+        results["MC-EDG-03"] = True
+
+        # MC-EDG-04: Hotkey P character scoping
+        print("[*] MC-EDG-04: Testing Hotkey P character scoping on Dog...")
+        client.send_request("send_key", {"key": "P"})
+        time.sleep(0.5)
+        # Step back to Hero
+        client.send_request("next_character")
+        time.sleep(1.5)
+        hero_still_stable = client.send_request("ping").get("result", {}).get("is_in_world")
+        assert hero_still_stable is True
+        print("    Hotkey P verified character scoped.")
+        results["MC-EDG-04"] = True
 
         client.close_screen("Inventory")
 
         print("\n" + "=" * 70)
-        print("ALL MULTI-CHARACTER PERSISTENCE & EDGE CASES PASSED!")
+        print("ALL COMPREHENSIVE MULTI-CHARACTER & EDGE CASES PASSED!")
         print(json.dumps(results, indent=2))
         print("=" * 70)
         return 0

@@ -95,6 +95,7 @@ void StageWeaponSlot(dao::ObjectId id, std::int32_t weaponSet, bool isMainHand, 
                      const SlotOverride &ovr);
 void CommitStaged(dao::ObjectId id);
 void DiscardStaged(dao::ObjectId id);
+void DiscardAllStaged();
 void SwitchPreset(dao::ObjectId id, std::int32_t presetIndex);
 void CyclePreset(dao::ObjectId id);
 

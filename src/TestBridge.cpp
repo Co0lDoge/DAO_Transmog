@@ -515,6 +515,7 @@ nlohmann::json ExecuteCommandOnMainThread(const nlohmann::json &req)
         {
             nlohmann::json info;
             info["id"] = static_cast<std::uint32_t>(m);
+            info["tag"] = WideToUtf8(dao::script::api::GetTag(m));
             info["appearance_type"] = dao::script::api::GetAppearanceType(m);
             info["racial_type"] = dao::script::api::GetCreatureRacialType(m);
             info["gender"] = dao::script::api::GetCreatureGender(m);
@@ -597,6 +598,7 @@ nlohmann::json ExecuteCommandOnMainThread(const nlohmann::json &req)
         res["character_id"] = static_cast<std::uint32_t>(target);
         if (target != dao::kInvalidObject)
         {
+            res["tag"] = WideToUtf8(dao::script::api::GetTag(target));
             res["appearance_type"] = dao::script::api::GetAppearanceType(target);
             res["racial_type"] = dao::script::api::GetCreatureRacialType(target);
             res["gender"] = dao::script::api::GetCreatureGender(target);
@@ -655,6 +657,10 @@ nlohmann::json ExecuteCommandOnMainThread(const nlohmann::json &req)
         {
             vk = VK_PRIOR;
         }
+        else if (key == "F1") { vk = VK_F1; }
+        else if (key == "F2") { vk = VK_F2; }
+        else if (key == "F3") { vk = VK_F3; }
+        else if (key == "F4") { vk = VK_F4; }
         else if (key == "PageDown")
         {
             vk = VK_NEXT;
