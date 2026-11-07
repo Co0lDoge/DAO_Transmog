@@ -22,4 +22,18 @@ void RefreshPaperdoll(dao::ObjectId charId, bool fullRebuild = false);
 // Zooms the paperdoll camera to head node for helmet inspection
 void ZoomPaperdollHead(bool zoomIn);
 
+// Test Bridge UI Inspection & Automation
+struct UiVariableResult
+{
+    bool found = false;
+    std::string type; // "bool", "number", "string", "undefined"
+    bool boolVal = false;
+    double numVal = 0.0;
+    std::string strVal;
+};
+
+UiVariableResult QueryInventoryUiVariable(const char *path);
+bool SimulateUiAction(std::string_view command, std::string_view arg = "");
+dao::ObjectId GetCurrentCharacterId();
+
 } // namespace transmog::gui

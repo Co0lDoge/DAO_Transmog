@@ -60,6 +60,8 @@ set(PLUGIN_SOURCES
     src/PortraitHook.cpp
     src/GuiBridge.h
     src/GuiBridge.cpp
+    src/TestBridge.h
+    src/TestBridge.cpp
 )
 
 set(PLUGIN_FILES
