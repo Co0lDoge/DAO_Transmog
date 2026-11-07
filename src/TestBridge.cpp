@@ -7,7 +7,9 @@
 #include "dao/Gui.h"
 #include "dao/Messages.h"
 #include "dao/ObjectId.h"
+#include "dao/Party.h"
 #include "dao/Saves.h"
+#include "dao/generated/ScriptApi.h"
 
 #include <windows.h>
 #include <nlohmann/json.hpp>
@@ -460,6 +462,136 @@ nlohmann::json ExecuteCommandOnMainThread(const nlohmann::json &req)
         return resp;
     }
 
+    if (method == "get_party")
+    {
+        const auto controlled = dao::party::Controlled();
+        const auto screenChar = dao::party::ScreenCharacter();
+        std::vector<dao::ObjectId> members;
+
+        const auto partyArray = dao::script::api::GetPartyList(controlled);
+        for (std::size_t i = 0; i < partyArray.Size(); ++i)
+        {
+            const auto obj = partyArray.Object(i);
+            if (obj != dao::kInvalidObject)
+            {
+                members.push_back(obj);
+            }
+        }
+        if (members.empty())
+        {
+            members = dao::party::Selected();
+        }
+        if (members.empty() && controlled != dao::kInvalidObject)
+        {
+            members.push_back(controlled);
+        }
+
+        nlohmann::json memberList = nlohmann::json::array();
+        for (const auto m : members)
+        {
+            nlohmann::json info;
+            info["id"] = static_cast<std::uint32_t>(m);
+            info["appearance_type"] = dao::script::api::GetAppearanceType(m);
+            info["racial_type"] = dao::script::api::GetCreatureRacialType(m);
+            info["gender"] = dao::script::api::GetCreatureGender(m);
+            info["is_controlled"] = (m == controlled);
+            info["is_screen"] = (m == screenChar);
+            memberList.push_back(info);
+        }
+        resp["result"] = {
+            {"controlled", static_cast<std::uint32_t>(controlled)},
+            {"screen_character", static_cast<std::uint32_t>(screenChar)},
+            {"members", memberList}
+        };
+        return resp;
+    }
+
+    if (method == "next_character")
+    {
+        const bool sent = dao::messages::SendText(L"GUI.SelectNextCharacterMessage");
+        const auto newScreen = dao::party::ScreenCharacter();
+        resp["result"] = {
+            {"success", sent},
+            {"screen_character", static_cast<std::uint32_t>(newScreen)}
+        };
+        return resp;
+    }
+
+    if (method == "prev_character")
+    {
+        const bool sent = dao::messages::SendText(L"GUI.SelectPreviousCharacterMessage");
+        const auto newScreen = dao::party::ScreenCharacter();
+        resp["result"] = {
+            {"success", sent},
+            {"screen_character", static_cast<std::uint32_t>(newScreen)}
+        };
+        return resp;
+    }
+
+    if (method == "set_screen_character")
+    {
+        dao::ObjectId target = dao::kInvalidObject;
+        if (params.contains("character_id"))
+        {
+            target = static_cast<dao::ObjectId>(params["character_id"].get<std::uint32_t>());
+        }
+        else if (params.contains("index"))
+        {
+            const auto idx = params["index"].get<std::size_t>();
+            const auto members = dao::party::Selected();
+            if (idx < members.size())
+            {
+                target = members[idx];
+            }
+        }
+        if (target == dao::kInvalidObject)
+        {
+            resp["error"] = {{"code", -32602}, {"message", "Invalid character target"}};
+            return resp;
+        }
+        const bool success = dao::party::SetScreenCharacter(target);
+        resp["result"] = {
+            {"success", success},
+            {"character_id", static_cast<std::uint32_t>(target)},
+            {"screen_character", static_cast<std::uint32_t>(dao::party::ScreenCharacter())}
+        };
+        return resp;
+    }
+
+    if (method == "inspect_creature")
+    {
+        dao::ObjectId target = dao::kInvalidObject;
+        if (params.contains("character_id"))
+        {
+            target = static_cast<dao::ObjectId>(params["character_id"].get<std::uint32_t>());
+        }
+        else
+        {
+            target = transmog::gui::GetCurrentCharacterId();
+        }
+        nlohmann::json res;
+        res["character_id"] = static_cast<std::uint32_t>(target);
+        if (target != dao::kInvalidObject)
+        {
+            res["appearance_type"] = dao::script::api::GetAppearanceType(target);
+            res["racial_type"] = dao::script::api::GetCreatureRacialType(target);
+            res["gender"] = dao::script::api::GetCreatureGender(target);
+
+            nlohmann::json equipSlots = nlohmann::json::object();
+            for (int s = 0; s <= 20; ++s)
+            {
+                const auto itemId = dao::script::api::GetItemInEquipSlot(s, target);
+                if (itemId != dao::kInvalidObject)
+                {
+                    equipSlots[std::to_string(s)] = static_cast<std::uint32_t>(itemId);
+                }
+            }
+            res["equipped_items"] = equipSlots;
+        }
+        resp["result"] = res;
+        return resp;
+    }
+
     if (method == "send_key")
     {
         const std::string key = params.value("key", "");
@@ -490,6 +622,18 @@ nlohmann::json ExecuteCommandOnMainThread(const nlohmann::json &req)
         else if (key == "ESC" || key == "Escape")
         {
             vk = VK_ESCAPE;
+        }
+        else if (key == "TAB" || key == "Tab")
+        {
+            vk = VK_TAB;
+        }
+        else if (key == "PageUp")
+        {
+            vk = VK_PRIOR;
+        }
+        else if (key == "PageDown")
+        {
+            vk = VK_NEXT;
         }
 
         if (vk != 0)

@@ -59,6 +59,17 @@ void ApplyTransmogToAppearance(dao::ObjectId targetId, void *creature, void *app
         return;
     }
 
+    // Canine creatures (Dog) do not use humanoid armor slots (0..6)
+    if (targetId != dao::kInvalidObject)
+    {
+        const auto appType = dao::script::api::GetAppearanceType(targetId);
+        const auto racial = dao::script::api::GetCreatureRacialType(targetId);
+        if (appType == 35 || racial == 5)
+        {
+            return;
+        }
+    }
+
     // Resolve the real creature pointer for equipment queries
     void *targetCreature = creature;
     if (targetId != dao::kInvalidObject)

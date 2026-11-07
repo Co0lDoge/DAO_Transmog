@@ -17,6 +17,7 @@
 #include "dao/Party.h"
 #include "dao/Portraits.h"
 #include "dao/core/GfxMovie.h"
+#include "dao/generated/ScriptApi.h"
 
 #include <windows.h>
 #include <algorithm>
@@ -75,8 +76,32 @@ dao::ObjectId CurrentCharacter()
     return dao::party::Controlled();
 }
 
-const wchar_t *SlotDisplayName(catalog::Slot slot)
+bool IsDog(dao::ObjectId charId)
 {
+    if (charId == dao::kInvalidObject)
+    {
+        return false;
+    }
+    const auto appType = dao::script::api::GetAppearanceType(charId);
+    const auto racial = dao::script::api::GetCreatureRacialType(charId);
+    return (appType == 35 || racial == 5);
+}
+
+const wchar_t *SlotDisplayName(catalog::Slot slot, bool isDog = false)
+{
+    if (isDog)
+    {
+        if (slot == catalog::Slot::Chest)
+        {
+            return L"Dog Collar";
+        }
+        if (slot == catalog::Slot::Gloves)
+        {
+            return L"Dog Warpaint";
+        }
+        return L"Dog Item";
+    }
+
     switch (slot)
     {
     case catalog::Slot::Chest:
@@ -123,7 +148,7 @@ void ApplyStagedSlotOverride(dao::ObjectId charId, catalog::Slot slot, const sta
     }
 }
 
-std::vector<BrowserRow> BuildBrowserRows(catalog::Slot slot)
+std::vector<BrowserRow> BuildBrowserRows(catalog::Slot slot, bool isDog = false)
 {
     std::vector<BrowserRow> rows;
 
@@ -140,7 +165,7 @@ std::vector<BrowserRow> BuildBrowserRows(catalog::Slot slot)
     });
 
     // 2. Hide Slot row (for non-Helmet slots; Helmet visibility is managed via the bottom cycle stepper)
-    if (slot != catalog::Slot::Helmet)
+    if (slot != catalog::Slot::Helmet || isDog)
     {
         rows.push_back(BrowserRow{
             .mode = state::SlotMode::HideSlot,
@@ -149,9 +174,14 @@ std::vector<BrowserRow> BuildBrowserRows(catalog::Slot slot)
             .defaultMaterial = 0xFF,
             .hasHeraldry = false,
             .label = L"<Hide Slot / Bare Body>",
-            .subtitle = L"Bare Model",
+            .subtitle = isDog ? L"Bare Coat / No Accessory" : L"Bare Model",
             .icon = L"",
         });
+    }
+
+    if (isDog)
+    {
+        return rows;
     }
 
     // 4. Scanned Catalog Appearances
@@ -226,10 +256,70 @@ void RefreshBrowserUI(dao::gui::Movie &movie, dao::ObjectId charId)
 {
     EnsureUiInitialized(movie);
 
+    const bool isDog = IsDog(charId);
+    if (isDog)
+    {
+        // Dog only has access to slot 0 (Collar) and slot 1 (Warpaint)
+        if (g_selectedSlot != catalog::Slot::Chest && g_selectedSlot != catalog::Slot::Gloves)
+        {
+            g_selectedSlot = catalog::Slot::Chest;
+        }
+
+        movie.SetVariable("_root.DAOTransmog_Browser.slot0.lbl.TextField.text", dao::gui::Value::WString(L"Collar"));
+        movie.SetVariable("_root.DAOTransmog_Browser.slot0._visible", dao::gui::Value::Bool(true));
+
+        movie.SetVariable("_root.DAOTransmog_Browser.slot1.lbl.TextField.text", dao::gui::Value::WString(L"Warpaint"));
+        movie.SetVariable("_root.DAOTransmog_Browser.slot1._visible", dao::gui::Value::Bool(true));
+
+        movie.SetVariable("_root.DAOTransmog_Browser.slot2._visible", dao::gui::Value::Bool(false));
+        movie.SetVariable("_root.DAOTransmog_Browser.slot3._visible", dao::gui::Value::Bool(false));
+        movie.SetVariable("_root.DAOTransmog_Browser.slot4._visible", dao::gui::Value::Bool(false));
+        movie.SetVariable("_root.DAOTransmog_Browser.slot5._visible", dao::gui::Value::Bool(false));
+
+        movie.SetVariable("_root.DAOTransmog_Browser.syncBtn._visible", dao::gui::Value::Bool(false));
+        movie.SetVariable("_root.DAOTransmog_Browser.zoomBtn._visible", dao::gui::Value::Bool(false));
+        movie.SetVariable("_root.DAOTransmog_Browser.matPrev._visible", dao::gui::Value::Bool(false));
+        movie.SetVariable("_root.DAOTransmog_Browser.matInfo._visible", dao::gui::Value::Bool(false));
+        movie.SetVariable("_root.DAOTransmog_Browser.matNext._visible", dao::gui::Value::Bool(false));
+        movie.SetVariable("_root.DAOTransmog_Browser.herPrev._visible", dao::gui::Value::Bool(false));
+        movie.SetVariable("_root.DAOTransmog_Browser.herInfo._visible", dao::gui::Value::Bool(false));
+        movie.SetVariable("_root.DAOTransmog_Browser.herNext._visible", dao::gui::Value::Bool(false));
+    }
+    else
+    {
+        // Humanoid character: restore all 6 standard slot tabs
+        movie.SetVariable("_root.DAOTransmog_Browser.slot0.lbl.TextField.text", dao::gui::Value::WString(L"Chest"));
+        movie.SetVariable("_root.DAOTransmog_Browser.slot0._visible", dao::gui::Value::Bool(true));
+
+        movie.SetVariable("_root.DAOTransmog_Browser.slot1.lbl.TextField.text", dao::gui::Value::WString(L"Gloves"));
+        movie.SetVariable("_root.DAOTransmog_Browser.slot1._visible", dao::gui::Value::Bool(true));
+
+        movie.SetVariable("_root.DAOTransmog_Browser.slot2.lbl.TextField.text", dao::gui::Value::WString(L"Boots"));
+        movie.SetVariable("_root.DAOTransmog_Browser.slot2._visible", dao::gui::Value::Bool(true));
+
+        movie.SetVariable("_root.DAOTransmog_Browser.slot3.lbl.TextField.text", dao::gui::Value::WString(L"Main"));
+        movie.SetVariable("_root.DAOTransmog_Browser.slot3._visible", dao::gui::Value::Bool(true));
+
+        movie.SetVariable("_root.DAOTransmog_Browser.slot4.lbl.TextField.text", dao::gui::Value::WString(L"Offhand"));
+        movie.SetVariable("_root.DAOTransmog_Browser.slot4._visible", dao::gui::Value::Bool(true));
+
+        movie.SetVariable("_root.DAOTransmog_Browser.slot5.lbl.TextField.text", dao::gui::Value::WString(L"Helmet"));
+        movie.SetVariable("_root.DAOTransmog_Browser.slot5._visible", dao::gui::Value::Bool(true));
+
+        movie.SetVariable("_root.DAOTransmog_Browser.syncBtn._visible", dao::gui::Value::Bool(true));
+        movie.SetVariable("_root.DAOTransmog_Browser.zoomBtn._visible", dao::gui::Value::Bool(true));
+        movie.SetVariable("_root.DAOTransmog_Browser.matPrev._visible", dao::gui::Value::Bool(true));
+        movie.SetVariable("_root.DAOTransmog_Browser.matInfo._visible", dao::gui::Value::Bool(true));
+        movie.SetVariable("_root.DAOTransmog_Browser.matNext._visible", dao::gui::Value::Bool(true));
+        movie.SetVariable("_root.DAOTransmog_Browser.herPrev._visible", dao::gui::Value::Bool(true));
+        movie.SetVariable("_root.DAOTransmog_Browser.herInfo._visible", dao::gui::Value::Bool(true));
+        movie.SetVariable("_root.DAOTransmog_Browser.herNext._visible", dao::gui::Value::Bool(true));
+    }
+
     const auto &st = state::GetOrCreate(charId);
     const auto &preset = st.CurrentPreset();
     const auto curSlot = GetStagedSlotOverride(charId, g_selectedSlot);
-    const auto rows = BuildBrowserRows(g_selectedSlot);
+    const auto rows = BuildBrowserRows(g_selectedSlot, isDog);
 
     const std::size_t totalPages = std::max<std::size_t>(1, (rows.size() + kRowsPerPage - 1) / kRowsPerPage);
     if (g_currentPage >= totalPages)
@@ -238,7 +328,7 @@ void RefreshBrowserUI(dao::gui::Movie &movie, dao::ObjectId charId)
     }
 
     // 1. Update Header & Preset Indicator
-    std::wstring hdrText = std::wstring(SlotDisplayName(g_selectedSlot)) + L" [" + preset.name;
+    std::wstring hdrText = std::wstring(SlotDisplayName(g_selectedSlot, isDog)) + L" [" + preset.name;
     if (st.hasStagedChanges)
     {
         hdrText += L" *";
@@ -576,12 +666,17 @@ void Init()
         try
         {
             const int slotNum = std::stoi(std::string(args));
+            const auto charId = CurrentCharacter();
+            const bool isDog = IsDog(charId);
+            if (isDog && slotNum != 0 && slotNum != 1)
+            {
+                return;
+            }
             g_selectedSlot = static_cast<catalog::Slot>(std::clamp(slotNum, 0, 6));
             g_currentPage = 0;
 
-            ZoomPaperdollHead(g_selectedSlot == catalog::Slot::Helmet);
+            ZoomPaperdollHead(!isDog && g_selectedSlot == catalog::Slot::Helmet);
 
-            const auto charId = CurrentCharacter();
             auto movie = dao::gui::ScreenMovie(L"Inventory");
             if (movie && charId != dao::kInvalidObject)
             {
@@ -1042,6 +1137,29 @@ void Init()
                              g_browserVisible);
             }
         }
+        // 3. Detect character switch during inventory and refresh wardrobe browser
+        static dao::ObjectId s_lastScreenChar = dao::kInvalidObject;
+        const auto curChar = CurrentCharacter();
+        if (curChar != s_lastScreenChar)
+        {
+            s_lastScreenChar = curChar;
+            if (g_browserVisible && curChar != dao::kInvalidObject)
+            {
+                if (IsDog(curChar))
+                {
+                    if (g_selectedSlot != catalog::Slot::Chest && g_selectedSlot != catalog::Slot::Gloves)
+                    {
+                        g_selectedSlot = catalog::Slot::Chest;
+                    }
+                }
+                state::BeginStaging(curChar);
+                auto movie = dao::gui::ScreenMovie(L"Inventory");
+                if (movie)
+                {
+                    RefreshBrowserUI(*movie, curChar);
+                }
+            }
+        }
         s_tWasDown = tIsDown;
     });
 
@@ -1060,10 +1178,15 @@ bool SimulateUiAction(std::string_view command, std::string_view args)
         try
         {
             const int slotNum = std::stoi(std::string(args));
+            const auto charId = CurrentCharacter();
+            const bool isDog = IsDog(charId);
+            if (isDog && slotNum != 0 && slotNum != 1)
+            {
+                return false;
+            }
             g_selectedSlot = static_cast<catalog::Slot>(std::clamp(slotNum, 0, 6));
             g_currentPage = 0;
-            ZoomPaperdollHead(g_selectedSlot == catalog::Slot::Helmet);
-            const auto charId = CurrentCharacter();
+            ZoomPaperdollHead(!isDog && g_selectedSlot == catalog::Slot::Helmet);
             auto movie = dao::gui::ScreenMovie(L"Inventory");
             if (movie && charId != dao::kInvalidObject)
             {
