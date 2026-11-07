@@ -113,4 +113,8 @@ void SaveUnlockedList();
 bool NeedsWorldRefresh();
 void SetNeedsWorldRefresh(bool need);
 
+// Party & Hero identification
+bool IsHeroObject(dao::ObjectId id, std::string_view tag = {});
+bool IsPartyMemberOrHero(dao::ObjectId id);
+
 } // namespace transmog::state

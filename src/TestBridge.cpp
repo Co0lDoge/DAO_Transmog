@@ -613,6 +613,30 @@ nlohmann::json ExecuteCommandOnMainThread(const nlohmann::json &req)
                 }
             }
             res["equipped_items"] = equipSlots;
+
+            auto *app = dao::CClientExoApp::Get();
+            if (app != nullptr)
+            {
+                auto *creature = app->GetCreatureById(target);
+                if (creature != nullptr)
+                {
+                    auto *curAppearance = *reinterpret_cast<void **>(reinterpret_cast<std::byte *>(creature) + 0x7B0);
+                    if (curAppearance != nullptr)
+                    {
+                        auto *baseItemWords = reinterpret_cast<std::uint16_t *>(static_cast<std::byte *>(curAppearance) + 0x12A);
+                        auto *variationBytes = reinterpret_cast<std::uint8_t *>(static_cast<std::byte *>(curAppearance) + 0x138);
+                        nlohmann::json appSlots = nlohmann::json::object();
+                        for (int i = 0; i < 7; ++i)
+                        {
+                            appSlots[std::to_string(i)] = {
+                                {"base_item", baseItemWords[i]},
+                                {"variation", variationBytes[i]}
+                            };
+                        }
+                        res["appearance_slots"] = appSlots;
+                    }
+                }
+            }
         }
         resp["result"] = res;
         return resp;
