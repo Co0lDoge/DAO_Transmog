@@ -316,6 +316,30 @@ nlohmann::json ExecuteCommandOnMainThread(const nlohmann::json &req)
         return resp;
     }
 
+    if (method == "save_game")
+    {
+        const std::string kindStr = params.value("kind", "quick");
+        const std::string nameStr = params.value("name", "TempTest");
+        dao::saves::Kind kind = dao::saves::Kind::Quick;
+        if (kindStr == "manual")
+        {
+            kind = dao::saves::Kind::Manual;
+        }
+        else if (kindStr == "auto")
+        {
+            kind = dao::saves::Kind::Auto;
+        }
+        const int slotNum = params.value("slot", -1);
+        const bool accepted = dao::saves::Save(kind, slotNum, Utf8ToWide(nameStr));
+        resp["result"] = {
+            {"accepted", accepted},
+            {"kind", kindStr},
+            {"slot", slotNum},
+            {"name", nameStr}
+        };
+        return resp;
+    }
+
     if (method == "quit_game")
     {
         HWND hwnd = GetGameWindow();
@@ -491,6 +515,7 @@ nlohmann::json ExecuteCommandOnMainThread(const nlohmann::json &req)
         {
             nlohmann::json info;
             info["id"] = static_cast<std::uint32_t>(m);
+            info["tag"] = WideToUtf8(dao::script::api::GetTag(m));
             info["appearance_type"] = dao::script::api::GetAppearanceType(m);
             info["racial_type"] = dao::script::api::GetCreatureRacialType(m);
             info["gender"] = dao::script::api::GetCreatureGender(m);
@@ -573,6 +598,7 @@ nlohmann::json ExecuteCommandOnMainThread(const nlohmann::json &req)
         res["character_id"] = static_cast<std::uint32_t>(target);
         if (target != dao::kInvalidObject)
         {
+            res["tag"] = WideToUtf8(dao::script::api::GetTag(target));
             res["appearance_type"] = dao::script::api::GetAppearanceType(target);
             res["racial_type"] = dao::script::api::GetCreatureRacialType(target);
             res["gender"] = dao::script::api::GetCreatureGender(target);
@@ -631,6 +657,10 @@ nlohmann::json ExecuteCommandOnMainThread(const nlohmann::json &req)
         {
             vk = VK_PRIOR;
         }
+        else if (key == "F1") { vk = VK_F1; }
+        else if (key == "F2") { vk = VK_F2; }
+        else if (key == "F3") { vk = VK_F3; }
+        else if (key == "F4") { vk = VK_F4; }
         else if (key == "PageDown")
         {
             vk = VK_NEXT;

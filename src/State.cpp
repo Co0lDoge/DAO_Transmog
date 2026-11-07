@@ -269,6 +269,43 @@ void RestoreFromResumeIfNeeded()
     spdlog::info("[DAOTransmog::State] No DAOTransmog.daolib found for Resume fallback; keeping vanilla");
 }
 
+bool IsHeroObject(dao::ObjectId id, std::string_view tag = {})
+{
+    if (tag == "hero" || tag == "player_hero" || tag == "player")
+    {
+        return true;
+    }
+    if (id == dao::kInvalidObject)
+    {
+        return false;
+    }
+    const dao::ObjectId heroId = dao::script::api::GetHero();
+    if (heroId != dao::kInvalidObject)
+    {
+        return (id == heroId);
+    }
+    const std::wstring engineTag = dao::script::api::GetTag(id);
+    return (engineTag == L"player" || engineTag == L"player_hero");
+}
+
+std::string GetCreatureTag(dao::ObjectId id)
+{
+    if (id == dao::kInvalidObject)
+    {
+        return {};
+    }
+    if (IsHeroObject(id))
+    {
+        return "hero";
+    }
+    const std::wstring engineTag = dao::script::api::GetTag(id);
+    if (!engineTag.empty() && engineTag != L"player")
+    {
+        return WideToUtf8(engineTag);
+    }
+    return std::to_string(id);
+}
+
 void ResolvePending(dao::ObjectId id, std::string_view tag)
 {
     if (id == dao::kInvalidObject)
@@ -287,47 +324,49 @@ void ResolvePending(dao::ObjectId id, std::string_view tag)
         return;
     }
 
-    const dao::ObjectId heroId = dao::script::api::GetHero();
-    const dao::ObjectId controlledId = dao::party::Controlled();
-    const bool isHero = (heroId != dao::kInvalidObject && id == heroId) ||
-                        (controlledId != dao::kInvalidObject && id == controlledId) ||
-                        (tag == "hero") || (tag == "player_hero");
+    const bool isHero = IsHeroObject(id, tag);
 
-    // 1. Pending hero state
-    if (isHero && g_pendingHeroState.has_value())
+    if (isHero)
     {
-        g_characters[id] = *g_pendingHeroState;
-        g_characters[id].tag = "hero";
-        g_tagToId["hero"] = id;
-        g_tagToId["player_hero"] = id;
-        g_pendingHeroState.reset();
-        spdlog::info("[DAOTransmog::State] Bound pending hero transmog state to object {:#x}", id);
+        // 1. Pending hero state from co-save
+        if (g_pendingHeroState.has_value())
+        {
+            g_characters[id] = *g_pendingHeroState;
+            g_characters[id].tag = "hero";
+            g_tagToId["hero"] = id;
+            g_tagToId["player_hero"] = id;
+            g_tagToId["player"] = id;
+            g_pendingHeroState.reset();
+            g_pendingByTag.erase("hero");
+            g_pendingByTag.erase("player_hero");
+            g_pendingByTag.erase("player");
+            spdlog::info("[DAOTransmog::State] Bound pending hero transmog state to object {:#x}", id);
+            return;
+        }
+        auto itTag = g_pendingByTag.find("hero");
+        if (itTag != g_pendingByTag.end())
+        {
+            g_characters[id] = itTag->second;
+            g_characters[id].tag = "hero";
+            g_tagToId["hero"] = id;
+            g_tagToId["player_hero"] = id;
+            g_tagToId["player"] = id;
+            g_pendingByTag.erase(itTag);
+            spdlog::info("[DAOTransmog::State] Bound pending hero transmog state from tag map to object {:#x}", id);
+            return;
+        }
+        // Hero has no pending state; hero retains clean state
         return;
     }
 
-    // 2. Pending by ID (e.g. numeric "130" from older saves)
-    auto itId = g_pendingById.find(id);
-    if (itId != g_pendingById.end())
-    {
-        g_characters[id] = itId->second;
-        g_characters[id].tag = !tag.empty() ? std::string(tag) : (isHero ? "hero" : std::to_string(id));
-        g_tagToId[g_characters[id].tag] = id;
-        g_pendingById.erase(itId);
-        spdlog::info("[DAOTransmog::State] Bound pending transmog state by numeric ID {:#x}", id);
-        return;
-    }
-
-    // 3. Pending by tag
+    // Companion resolution:
     std::string tagStr(tag);
     if (tagStr.empty())
     {
-        const std::wstring engineTag = dao::script::api::GetTag(id);
-        if (!engineTag.empty())
-        {
-            tagStr = WideToUtf8(engineTag);
-        }
+        tagStr = GetCreatureTag(id);
     }
-    if (!tagStr.empty())
+
+    if (!tagStr.empty() && tagStr != "hero" && tagStr != "player" && tagStr != "player_hero")
     {
         auto itTag = g_pendingByTag.find(tagStr);
         if (itTag != g_pendingByTag.end())
@@ -341,31 +380,20 @@ void ResolvePending(dao::ObjectId id, std::string_view tag)
         }
     }
 
-    // 4. Fallback: If this is the hero and there is any remaining pending state, bind it
-    if (isHero)
+    // Match by numeric ID fallback from older saves
+    auto itId = g_pendingById.find(id);
+    if (itId != g_pendingById.end())
     {
-        if (!g_pendingByTag.empty())
-        {
-            auto pendingIt = g_pendingByTag.begin();
-            g_characters[id] = pendingIt->second;
-            g_characters[id].tag = "hero";
-            g_tagToId["hero"] = id;
-            spdlog::info("[DAOTransmog::State] Bound fallback pending transmog state '{}' to hero object {:#x}",
-                         pendingIt->first, id);
-            g_pendingByTag.erase(pendingIt);
-            return;
-        }
-        if (!g_pendingById.empty())
-        {
-            auto pendingIt = g_pendingById.begin();
-            g_characters[id] = pendingIt->second;
-            g_characters[id].tag = "hero";
-            g_tagToId["hero"] = id;
-            spdlog::info("[DAOTransmog::State] Bound fallback pending numeric ID state to hero object {:#x}", id);
-            g_pendingById.erase(pendingIt);
-            return;
-        }
+        g_characters[id] = itId->second;
+        g_characters[id].tag = !tagStr.empty() ? tagStr : std::to_string(id);
+        g_tagToId[g_characters[id].tag] = id;
+        g_pendingById.erase(itId);
+        spdlog::info("[DAOTransmog::State] Bound pending transmog state by numeric ID {:#x}", id);
+        return;
     }
+
+    // If no saved state exists for this companion, do NOT bind any state.
+    // The companion remains un-overridden (vanilla equipment).
 }
 
 CharacterState &GetOrCreate(dao::ObjectId id, std::string_view tag)
@@ -384,20 +412,22 @@ CharacterState &GetOrCreate(dao::ObjectId id, std::string_view tag)
     }
 
     auto &created = g_characters[id];
-    if (!tag.empty())
+    if (IsHeroObject(id, tag))
+    {
+        created.tag = "hero";
+        g_tagToId["hero"] = id;
+        g_tagToId["player_hero"] = id;
+        g_tagToId["player"] = id;
+    }
+    else if (!tag.empty())
     {
         created.tag = std::string(tag);
         g_tagToId[created.tag] = id;
     }
     else
     {
-        const dao::ObjectId heroId = dao::script::api::GetHero();
-        const dao::ObjectId controlledId = dao::party::Controlled();
-        if (id == heroId || id == controlledId)
-        {
-            created.tag = "hero";
-            g_tagToId["hero"] = id;
-        }
+        created.tag = GetCreatureTag(id);
+        g_tagToId[created.tag] = id;
     }
     InitDefaultPresets(created);
     return created;
@@ -469,20 +499,17 @@ void BeginStaging(dao::ObjectId id)
 {
     auto &state = GetOrCreate(id);
     state.stagedPreview = state.ActivePreset();
-    state.hasStagedChanges = true;
+    state.hasStagedChanges = false;
 }
 
 void StageArmorSlot(dao::ObjectId id, catalog::Slot slot, const SlotOverride &ovr)
 {
     auto &state = GetOrCreate(id);
-    if (!state.hasStagedChanges)
-    {
-        BeginStaging(id);
-    }
     const auto idx = static_cast<std::size_t>(slot);
     if (idx < state.stagedPreview.armorSlots.size())
     {
         state.stagedPreview.armorSlots[idx] = ovr;
+        state.hasStagedChanges = true;
     }
 }
 
@@ -490,10 +517,6 @@ void StageWeaponSlot(dao::ObjectId id, std::int32_t weaponSet, bool isMainHand, 
                      const SlotOverride &ovr)
 {
     auto &state = GetOrCreate(id);
-    if (!state.hasStagedChanges)
-    {
-        BeginStaging(id);
-    }
     const auto setIdx = static_cast<std::size_t>(std::clamp(weaponSet, 0, 1));
     if (isMainHand)
     {
@@ -507,6 +530,7 @@ void StageWeaponSlot(dao::ObjectId id, std::int32_t weaponSet, bool isMainHand, 
     {
         state.stagedPreview.weaponSets[setIdx].offhandWeapon = ovr;
     }
+    state.hasStagedChanges = true;
 }
 
 void CommitStaged(dao::ObjectId id)
@@ -528,6 +552,19 @@ void DiscardStaged(dao::ObjectId id)
         state->stagedPreview = state->ActivePreset();
         state->hasStagedChanges = false;
         spdlog::info("[DAOTransmog::State] Discarded staged transmog changes for object {:#x}", id);
+    }
+}
+
+void DiscardAllStaged()
+{
+    for (auto &[id, state] : g_characters)
+    {
+        if (state.hasStagedChanges)
+        {
+            state.stagedPreview = state.ActivePreset();
+            state.hasStagedChanges = false;
+            spdlog::info("[DAOTransmog::State] Discarded staged transmog changes for object {:#x}", id);
+        }
     }
 }
 
@@ -654,8 +691,6 @@ std::string ToJson()
     root["schemaVersion"] = 1;
 
     nlohmann::json charsJson = nlohmann::json::object();
-    const dao::ObjectId heroId = dao::script::api::GetHero();
-    const dao::ObjectId controlledId = dao::party::Controlled();
 
     auto serializeCharacter = [&](std::string_view key, const CharacterState &state, bool isHero) {
         nlohmann::json charObj;
@@ -691,29 +726,19 @@ std::string ToJson()
 
     for (const auto &[id, state] : g_characters)
     {
-        const bool isHero = (id != dao::kInvalidObject && (id == heroId || id == controlledId)) ||
-                            state.tag == "hero" || state.tag == "player_hero";
-
+        const bool isHero = IsHeroObject(id, state.tag);
         std::string key;
-        if (!state.tag.empty())
-        {
-            key = state.tag;
-        }
-        else if (isHero)
+        if (isHero)
         {
             key = "hero";
         }
+        else if (!state.tag.empty() && state.tag != "hero" && state.tag != "player" && state.tag != "player_hero")
+        {
+            key = state.tag;
+        }
         else
         {
-            const std::wstring engineTag = dao::script::api::GetTag(id);
-            if (!engineTag.empty())
-            {
-                key = WideToUtf8(engineTag);
-            }
-            else
-            {
-                key = std::to_string(id);
-            }
+            key = GetCreatureTag(id);
         }
 
         serializeCharacter(key, state, isHero);
@@ -747,7 +772,7 @@ bool FromJson(std::string_view jsonStr)
         }
 
         const auto &charsObj = root["characters"];
-        const std::size_t charCount = charsObj.size();
+
 
         for (auto &[key, charObj] : charsObj.items())
         {
@@ -808,39 +833,34 @@ bool FromJson(std::string_view jsonStr)
             state.hasStagedChanges = false;
 
             const bool isHero = charObj.value("isHero", false) ||
-                                (key == "hero" || key == "player_hero") ||
-                                (charCount == 1);
+                                (key == "hero" || key == "player_hero" || key == "player");
 
             if (isHero)
             {
                 g_pendingHeroState = state;
             }
-
-            if (!key.empty() && std::all_of(key.begin(), key.end(), ::isdigit))
+            else
             {
-                try
+                if (!key.empty() && std::all_of(key.begin(), key.end(), ::isdigit))
                 {
-                    const auto numId = static_cast<dao::ObjectId>(std::stoul(key));
-                    g_pendingById[numId] = state;
+                    try
+                    {
+                        const auto numId = static_cast<dao::ObjectId>(std::stoul(key));
+                        g_pendingById[numId] = state;
+                    }
+                    catch (...)
+                    {
+                    }
                 }
-                catch (...)
-                {
-                }
+                g_pendingByTag[key] = state;
             }
-
-            g_pendingByTag[key] = state;
         }
 
-        // Immediately attempt to resolve if hero/controlled is already available
+        // Immediately attempt to resolve hero if available
         const dao::ObjectId heroId = dao::script::api::GetHero();
         if (heroId != dao::kInvalidObject)
         {
             ResolvePending(heroId, "hero");
-        }
-        const dao::ObjectId controlled = dao::party::Controlled();
-        if (controlled != dao::kInvalidObject)
-        {
-            ResolvePending(controlled);
         }
 
         return true;

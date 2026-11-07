@@ -66,6 +66,8 @@ struct BrowserRow
     std::wstring icon;
 };
 
+static dao::ObjectId s_lastScreenChar = dao::kInvalidObject;
+
 dao::ObjectId CurrentCharacter()
 {
     const auto screenChar = dao::party::ScreenCharacter();
@@ -610,6 +612,7 @@ void Init()
         const auto charId = CurrentCharacter();
         if (shown)
         {
+            s_lastScreenChar = dao::kInvalidObject;
             auto movie = dao::gui::ScreenMovie(L"Inventory");
             if (movie)
             {
@@ -627,18 +630,20 @@ void Init()
         }
         else
         {
-            if (charId != dao::kInvalidObject)
+            state::DiscardAllStaged();
+            if (s_lastScreenChar != dao::kInvalidObject)
             {
-                state::DiscardStaged(charId);
+                RefreshPaperdoll(s_lastScreenChar, /*fullRebuild=*/true);
+            }
+            if (charId != dao::kInvalidObject && charId != s_lastScreenChar)
+            {
                 RefreshPaperdoll(charId, /*fullRebuild=*/true);
             }
             for (const auto member : dao::party::Selected())
             {
-                if (member != charId)
-                {
-                    RefreshPaperdoll(member, /*fullRebuild=*/true);
-                }
+                RefreshPaperdoll(member, /*fullRebuild=*/true);
             }
+            s_lastScreenChar = dao::kInvalidObject;
             g_browserVisible = false;
             if (g_isHeadZoomed)
             {
@@ -1062,6 +1067,10 @@ void Init()
     // H: Toggle helmet mode (Show -> Hide in Dialogue -> Hide -> Show)
     config::SetOnToggleHelmetCallback([]() {
         const auto charId = CurrentCharacter();
+        if (charId == dao::kInvalidObject || IsDog(charId))
+        {
+            return;
+        }
         auto *st = state::Find(charId);
         if (st != nullptr)
         {
@@ -1138,10 +1147,19 @@ void Init()
             }
         }
         // 3. Detect character switch during inventory and refresh wardrobe browser
-        static dao::ObjectId s_lastScreenChar = dao::kInvalidObject;
         const auto curChar = CurrentCharacter();
         if (curChar != s_lastScreenChar)
         {
+            if (s_lastScreenChar != dao::kInvalidObject)
+            {
+                // Discard any uncommitted staging on the previous character before switching
+                auto *st = state::Find(s_lastScreenChar);
+                if (st != nullptr && st->hasStagedChanges)
+                {
+                    state::DiscardStaged(s_lastScreenChar);
+                    RefreshPaperdoll(s_lastScreenChar);
+                }
+            }
             s_lastScreenChar = curChar;
             if (g_browserVisible && curChar != dao::kInvalidObject)
             {
