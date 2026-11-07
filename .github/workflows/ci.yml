@@ -3,8 +3,12 @@ name: CI
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -69,8 +73,35 @@ jobs:
       - name: Run Unit Tests
         run: ctest --test-dir build --output-on-failure -C Release
 
+      - name: Package Release ZIP
+        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+        shell: pwsh
+        run: |
+          $staging = "$env:RUNNER_TEMP/staging"
+          $dest = "$staging/daolib/plugins/DAOTransmog"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item "build/daolib/plugins/DAOTransmog/*" $dest -Force
+          Compress-Archive -Path "$staging/*" -DestinationPath "$env:GITHUB_WORKSPACE/DAOTransmog.zip" -Force
+
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: DAOTransmog-Release
           path: build/daolib/plugins/DAOTransmog/
+
+      - name: Publish GitHub Release (Tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: DAOTransmog.zip
+          generate_release_notes: true
+
+      - name: Publish GitHub Pre-Release (main)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "DAOTransmog (Latest Main Build)"
+          body: "Automated continuous build from the latest commit on `main`."
+          prerelease: true
+          files: DAOTransmog.zip
