@@ -316,6 +316,30 @@ nlohmann::json ExecuteCommandOnMainThread(const nlohmann::json &req)
         return resp;
     }
 
+    if (method == "save_game")
+    {
+        const std::string kindStr = params.value("kind", "quick");
+        const std::string nameStr = params.value("name", "TempTest");
+        dao::saves::Kind kind = dao::saves::Kind::Quick;
+        if (kindStr == "manual")
+        {
+            kind = dao::saves::Kind::Manual;
+        }
+        else if (kindStr == "auto")
+        {
+            kind = dao::saves::Kind::Auto;
+        }
+        const int slotNum = params.value("slot", -1);
+        const bool accepted = dao::saves::Save(kind, slotNum, Utf8ToWide(nameStr));
+        resp["result"] = {
+            {"accepted", accepted},
+            {"kind", kindStr},
+            {"slot", slotNum},
+            {"name", nameStr}
+        };
+        return resp;
+    }
+
     if (method == "quit_game")
     {
         HWND hwnd = GetGameWindow();
