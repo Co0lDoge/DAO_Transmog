@@ -127,6 +127,8 @@ void ApplyTransmogToAppearance(dao::ObjectId targetId, void *creature, void *app
         // An item is considered equipped if realItem is present OR if vanilla appearance already had an item
         // (crucial for preview paperdoll and initial load frames where equipment structure is detached/transitioning)
         const bool isEquipped = genuineUnequipped ? false : ((realItem != 0) || (baseItemWords[i] != 0xFFFF));
+        const bool allowPreview = (st != nullptr && st->hasStagedChanges);
+        const bool canDisplay = !config::RequireEquipped() || isEquipped || allowPreview;
 
         if (preset == nullptr || i >= preset->armorSlots.size())
         {
@@ -136,9 +138,14 @@ void ApplyTransmogToAppearance(dao::ObjectId targetId, void *creature, void *app
         const auto &ovr = preset->armorSlots[i];
         if (ovr.mode == state::SlotMode::Real)
         {
-            // Vanilla mode: NEVER overwrite authentic appearance!
-            // Only if the creature genuinely unequipped the item, ensure appearance slot is cleared
-            if (genuineUnequipped)
+            // Revert slot to real equipped item's authentic appearance via engine CAppearance::ApplyItem
+            if (realItem != 0)
+            {
+                using ApplyItemFn = void(__thiscall *)(void *appearance, int invSlot, void *item);
+                auto applyItem = reinterpret_cast<ApplyItemFn>(dao::core::Relocate(0x00748da0, dao::Module::Base()));
+                applyItem(appearance, invSlot, reinterpret_cast<void *>(realItem));
+            }
+            else
             {
                 baseItemWords[i] = 0xFFFF;
                 variationBytes[i] = 0xFF;
@@ -146,11 +153,13 @@ void ApplyTransmogToAppearance(dao::ObjectId targetId, void *creature, void *app
                 materialDwords[i] = 0xFFFFFFFF;
                 tintDwords[i] = 0xFFFFFFFF;
             }
+            spdlog::info("[DAOTransmog::Appearance] Slot {} (invSlot {}): mode=Real, targetId={:#x}, realItem={:#x}, baseItem={}",
+                         i, invSlot, targetId, realItem, baseItemWords[i]);
             continue;
         }
         else if (ovr.mode == state::SlotMode::Override)
         {
-            if (!config::RequireEquipped() || isEquipped)
+            if (canDisplay)
             {
                 if (ovr.baseItem != 0xFFFF)
                 {
@@ -199,7 +208,7 @@ void ApplyTransmogToAppearance(dao::ObjectId targetId, void *creature, void *app
             }
             else if (ovr.baseItem != 0xFFFF && ovr.baseItem != 0)
             {
-                if (!config::RequireEquipped() || isEquipped)
+                if (canDisplay)
                 {
                     baseItemWords[i] = ovr.baseItem;
                     if (ovr.variation != 0xFF)

@@ -7,6 +7,7 @@
 #include "SafeMode.h"
 #include "State.h"
 #include "Strings.h"
+#include "TestBridge.h"
 #include "WeaponHook.h"
 #include "dao/ClientExoApp.h"
 #include "dao/Equipment.h"
@@ -60,7 +61,10 @@ extern "C" __declspec(dllexport) bool __cdecl DAOLib_Load(const dao::LoaderInfo 
     // 7. Initialize Scaleform GFx UI Bridge & Hotkeys
     transmog::gui::Init();
 
-    // 8. Automatically refresh 3D appearance in world after load, area transition, or equipment change
+    // 8. Initialize In-Game Test Bridge for automated testing
+    transmog::testbridge::Init();
+
+    // 9. Automatically refresh 3D appearance in world after load, area transition, or equipment change
     static std::unordered_set<dao::ObjectId> s_pendingEquipRefreshes;
 
     const auto onEquipChange = [](const dao::equipment::Change &change) {

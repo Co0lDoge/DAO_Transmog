@@ -232,33 +232,33 @@ def build_actions():
         code += set_member_d(icon_mc_code, "_x", 1.0)
         code += set_member_d(icon_mc_code, "_y", 1.0)
 
-        # 8. Name text field: lbl at depth 4, x = 38.0, y = 1.0 (authentic dark vanilla inventory text: 0x261906)
+        # 8. Name text field: lbl at depth 4, x = 36.0, y = 1.0 (bright warm parchment cream: 0xEBDDC2)
         code += push_i(4) + push_cp("lbl") + push_cp("ContainerEntryText") + push_i(3)
         code += self_code + push_cp("attachMovie") + b"\x52\x17"
-        code += set_member_d(lbl_code, "_x", 38.0)
+        code += set_member_d(lbl_code, "_x", 36.0)
         code += set_member_d(lbl_code, "_y", 1.0)
-        code += set_member_d(tf_code, "_width", w - 44.0)
+        code += set_member_d(tf_code, "_width", w - 42.0)
         code += set_member_s(tf_code, "text", "")
         code += set_member_i(lbl_code, "mouseChildren", 0)
         code += set_member_i(lbl_code, "mouseEnabled", 0)
         code += set_member_i(tf_code, "selectable", 0)
         code += set_member_i(tf_code, "mouseEnabled", 0)
         code += set_member_i(tf_code, "html", 0)
-        code += set_member_i(tf_code, "textColor", 0x261906)
+        code += set_member_i(tf_code, "textColor", 0xEBDDC2)
 
-        # 9. Subtitle text field: lblSub at depth 5, x = 38.0, y = 16.0 (muted dark tan/brown: 0x5C4430)
+        # 9. Subtitle text field: lblSub at depth 5, x = 36.0, y = 16.0 (muted warm tan: 0xA69375)
         code += push_i(5) + push_cp("lblSub") + push_cp("ContainerEntryText") + push_i(3)
         code += self_code + push_cp("attachMovie") + b"\x52\x17"
-        code += set_member_d(lbl_sub_code, "_x", 38.0)
+        code += set_member_d(lbl_sub_code, "_x", 36.0)
         code += set_member_d(lbl_sub_code, "_y", 16.0)
-        code += set_member_d(tf_sub_code, "_width", w - 44.0)
+        code += set_member_d(tf_sub_code, "_width", w - 42.0)
         code += set_member_s(tf_sub_code, "text", "")
         code += set_member_i(lbl_sub_code, "mouseChildren", 0)
         code += set_member_i(lbl_sub_code, "mouseEnabled", 0)
         code += set_member_i(tf_sub_code, "selectable", 0)
         code += set_member_i(tf_sub_code, "mouseEnabled", 0)
         code += set_member_i(tf_sub_code, "html", 0)
-        code += set_member_i(tf_sub_code, "textColor", 0x5C4430)
+        code += set_member_i(tf_sub_code, "textColor", 0xA69375)
 
         # 10. Interactive events: Click & Hover
         code += set_member_i(self_code, "useHandCursor", 1)
@@ -288,25 +288,25 @@ def build_actions():
     )
 
     # B. Wardrobe Browser container: _root.DAOTransmog_Browser at depth 401
-    # Transparent background (bg_alpha = 0.0) so the book parchment and embossed backpack artwork show through!
+    # Placed neatly inside the right parchment page, avoiding collisions with book spine and capacity bar
     browser_parts = ["DAOTransmog_Browser"]
     browser_code = push_path(browser_parts)
     init_body += push_i(401) + push_cp("DAOTransmog_Browser") + push_i(2)
     init_body += push_root() + push_cp("createEmptyMovieClip") + b"\x52\x17"
-    init_body += set_member_d(browser_code, "_x", 534.0)
-    init_body += set_member_d(browser_code, "_y", 168.0)
+    init_body += set_member_d(browser_code, "_x", 548.0)
+    init_body += set_member_d(browser_code, "_y", 166.0)
     init_body += set_member_i(browser_code, "_visible", 0)
-    init_body += draw_box(browser_code, 366.0, 448.0, 0x1A110B, 0.0, 0x3D2B1B, 0.5, r=0)
+    init_body += draw_box(browser_code, 350.0, 440.0, 0x120C07, 75.0, 0x4A331E, 1.0, r=0)
 
     # C. 6 Slot Selector Tabs (y = 6, h = 22)
     # Refined antique tabs with fine 1px bronze borders and chamfered corners
     slot_defs = [
-        ("slot0", 10, 6.0,   56.0, "Chest",   "0"),
-        ("slot1", 11, 65.0,  56.0, "Gloves",  "1"),
-        ("slot2", 12, 124.0, 56.0, "Boots",   "2"),
-        ("slot3", 13, 183.0, 56.0, "Main",    "3"),
-        ("slot4", 14, 242.0, 60.0, "Offhand", "4"),
-        ("slot5", 15, 305.0, 55.0, "Helm",    "5"),
+        ("slot0", 10, 5.0,   52.0, "Chest",   "0"),
+        ("slot1", 11, 59.0,  53.0, "Gloves",  "1"),
+        ("slot2", 12, 114.0, 49.0, "Boots",   "2"),
+        ("slot3", 13, 165.0, 49.0, "Main",    "3"),
+        ("slot4", 14, 216.0, 64.0, "Offhand", "4"),
+        ("slot5", 15, 282.0, 62.0, "Helmet",  "5"),
     ]
     for sname, sdepth, sx, sw, slbl, sarg in slot_defs:
         init_body += make_widget(
@@ -319,16 +319,16 @@ def build_actions():
     # D. Header & 3 Outfit Preset Badges (y = 32, h = 20)
     init_body += make_widget(
         browser_parts, "hdr", 16,
-        6.0, 32.0, 240.0, 20.0,
+        5.0, 32.0, 227.0, 20.0,
         "Slot: Chest Armor", None, "",
         bg_col=0x120C07, bg_alpha=80.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
     # Presets formatted as elegant Roman numerals: [ I ], [ II ], [ III ]
-    for pidx, px in enumerate([250.0, 288.0, 326.0]):
+    for pidx, px in enumerate([236.0, 272.0, 308.0]):
         preset_label = ["I", "II", "III"][pidx]
         init_body += make_widget(
             browser_parts, f"pre{pidx}", 17 + pidx,
-            px, 32.0, 34.0, 20.0,
+            px, 32.0, 36.0 if pidx == 2 else 34.0, 20.0,
             preset_label, "DAOTransmog_Preset", str(pidx),
             bg_col=0x150E08, bg_alpha=85.0, border_col=0x5C4328, border_w=1.0, r=2.0
         )
@@ -338,26 +338,26 @@ def build_actions():
     for r in range(8):
         init_body += make_item_row(
             browser_parts, f"row{r}", 20 + r,
-            6.0, 56.0 + r * 34.0, 354.0, 33.0,
+            5.0, 56.0 + r * 34.0, 340.0, 33.0,
             "DAOTransmog_ClickRow", str(r)
         )
 
     # F. Pagination Row (y = 332, h = 22)
     init_body += make_widget(
         browser_parts, "pgPrev", 30,
-        6.0, 332.0, 74.0, 22.0,
+        5.0, 332.0, 70.0, 22.0,
         "< Prev", "DAOTransmog_Page", "-1",
         bg_col=0x150E08, bg_alpha=85.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
     init_body += make_widget(
         browser_parts, "pgInfo", 31,
-        84.0, 332.0, 198.0, 22.0,
+        77.0, 332.0, 190.0, 22.0,
         "Page 1 / 1", None, "",
         bg_col=0x120C07, bg_alpha=80.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
     init_body += make_widget(
         browser_parts, "pgNext", 32,
-        286.0, 332.0, 74.0, 22.0,
+        269.0, 332.0, 75.0, 22.0,
         "Next >", "DAOTransmog_Page", "1",
         bg_col=0x150E08, bg_alpha=85.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
@@ -365,25 +365,25 @@ def build_actions():
     # G. Material & Sync Row (y = 358, h = 22)
     init_body += make_widget(
         browser_parts, "matPrev", 33,
-        6.0, 358.0, 28.0, 22.0,
+        5.0, 358.0, 26.0, 22.0,
         "<", "DAOTransmog_Mat", "-1",
         bg_col=0x150E08, bg_alpha=85.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
     init_body += make_widget(
         browser_parts, "matInfo", 34,
-        38.0, 358.0, 210.0, 22.0,
+        33.0, 358.0, 202.0, 22.0,
         "Mat: Default", None, "",
         bg_col=0x120C07, bg_alpha=80.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
     init_body += make_widget(
         browser_parts, "matNext", 35,
-        252.0, 358.0, 28.0, 22.0,
+        237.0, 358.0, 26.0, 22.0,
         ">", "DAOTransmog_Mat", "1",
         bg_col=0x150E08, bg_alpha=85.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
     init_body += make_widget(
         browser_parts, "syncBtn", 36,
-        284.0, 358.0, 76.0, 22.0,
+        265.0, 358.0, 79.0, 22.0,
         "Sync All", "DAOTransmog_SyncAll", "",
         bg_col=0x150E08, bg_alpha=85.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
@@ -391,25 +391,25 @@ def build_actions():
     # H. Heraldry / Helmet Visibility & Zoom Row (y = 384, h = 22)
     init_body += make_widget(
         browser_parts, "herPrev", 37,
-        6.0, 384.0, 28.0, 22.0,
+        5.0, 384.0, 26.0, 22.0,
         "<", "DAOTransmog_Her", "-1",
         bg_col=0x150E08, bg_alpha=85.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
     init_body += make_widget(
         browser_parts, "herInfo", 38,
-        38.0, 384.0, 210.0, 22.0,
+        33.0, 384.0, 202.0, 22.0,
         "Heraldry: Default", "DAOTransmog_Her", "1",
         bg_col=0x120C07, bg_alpha=80.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
     init_body += make_widget(
         browser_parts, "herNext", 39,
-        252.0, 384.0, 28.0, 22.0,
+        237.0, 384.0, 26.0, 22.0,
         ">", "DAOTransmog_Her", "1",
         bg_col=0x150E08, bg_alpha=85.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
     init_body += make_widget(
         browser_parts, "zoomBtn", 40,
-        284.0, 384.0, 76.0, 22.0,
+        265.0, 384.0, 79.0, 22.0,
         "Zoom", "DAOTransmog_ZoomToggle", "",
         bg_col=0x150E08, bg_alpha=85.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
@@ -418,19 +418,19 @@ def build_actions():
     # Refined button frames with rich borders
     init_body += make_widget(
         browser_parts, "applyBtn", 41,
-        6.0, 412.0, 114.0, 26.0,
+        5.0, 412.0, 110.0, 26.0,
         "Apply Outfit", "DAOTransmog_Apply", "",
         bg_col=0x24160C, bg_alpha=90.0, border_col=0xB8934C, border_w=1.2, r=2.0
     )
     init_body += make_widget(
         browser_parts, "resetSlotBtn", 42,
-        126.0, 412.0, 114.0, 26.0,
+        117.0, 412.0, 110.0, 26.0,
         "Reset Slot", "DAOTransmog_ResetSlot", "",
         bg_col=0x150E08, bg_alpha=85.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )
     init_body += make_widget(
         browser_parts, "resetAllBtn", 43,
-        246.0, 412.0, 114.0, 26.0,
+        229.0, 412.0, 115.0, 26.0,
         "Discard", "DAOTransmog_Discard", "",
         bg_col=0x150E08, bg_alpha=85.0, border_col=0x5C4328, border_w=1.0, r=2.0
     )

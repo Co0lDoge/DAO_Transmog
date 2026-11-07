@@ -130,8 +130,8 @@ std::vector<BrowserRow> BuildBrowserRows(catalog::Slot slot)
     // 1. Vanilla Real Look row
     rows.push_back(BrowserRow{
         .mode = state::SlotMode::Real,
-        .baseItem = 0,
-        .variation = 0,
+        .baseItem = 0xFFFF,
+        .variation = 0xFF,
         .defaultMaterial = 0xFF,
         .hasHeraldry = false,
         .label = L"<Equipped Item Real Look>",
@@ -139,29 +139,17 @@ std::vector<BrowserRow> BuildBrowserRows(catalog::Slot slot)
         .icon = L"",
     });
 
-    // 2. Hide Slot row
-    rows.push_back(BrowserRow{
-        .mode = state::SlotMode::HideSlot,
-        .baseItem = 0,
-        .variation = 0,
-        .defaultMaterial = 0xFF,
-        .hasHeraldry = false,
-        .label = (slot == catalog::Slot::Helmet) ? L"<Always Hide Helmet>" : L"<Hide Slot / Bare Body>",
-        .subtitle = L"Bare Model",
-        .icon = L"",
-    });
-
-    // 3. Hide in Dialogues row (for Helmet)
-    if (slot == catalog::Slot::Helmet)
+    // 2. Hide Slot row (for non-Helmet slots; Helmet visibility is managed via the bottom cycle stepper)
+    if (slot != catalog::Slot::Helmet)
     {
         rows.push_back(BrowserRow{
-            .mode = state::SlotMode::HideDialogue,
+            .mode = state::SlotMode::HideSlot,
             .baseItem = 0,
             .variation = 0,
             .defaultMaterial = 0xFF,
             .hasHeraldry = false,
-            .label = L"<Hide Helmet in Dialogues>",
-            .subtitle = L"Contextual Visibility",
+            .label = L"<Hide Slot / Bare Body>",
+            .subtitle = L"Bare Model",
             .icon = L"",
         });
     }
@@ -310,12 +298,15 @@ void RefreshBrowserUI(dao::gui::Movie &movie, dao::ObjectId charId)
                               (r.baseItem == curSlot.baseItem && r.variation == curSlot.variation));
             }
 
-            const std::wstring rowText = isSelected ? (L">> " + r.label + L" *") : r.label;
+            const std::wstring rowText = isSelected ? (L">> " + r.label) : r.label;
+            const std::uint32_t titleColor = isSelected ? 0xFFE6A0 : 0xEBDDC2;
+            const std::uint32_t subColor = isSelected ? 0xD8C29D : 0xA69375;
+
             movie.SetVariable(visPath.c_str(), dao::gui::Value::Bool(true));
             movie.SetVariable(namePath.c_str(), dao::gui::Value::WString(rowText.c_str()));
             movie.SetVariable(subPath.c_str(), dao::gui::Value::WString(r.subtitle.c_str()));
-            movie.SetVariable((rowBase + ".lbl.TextField.textColor").c_str(), dao::gui::Value::Number(0x261906));
-            movie.SetVariable((rowBase + ".lblSub.TextField.textColor").c_str(), dao::gui::Value::Number(0x5C4430));
+            movie.SetVariable((rowBase + ".lbl.TextField.textColor").c_str(), dao::gui::Value::Number(titleColor));
+            movie.SetVariable((rowBase + ".lblSub.TextField.textColor").c_str(), dao::gui::Value::Number(subColor));
             movie.SetVariable((rowBase + ".lbl.TextField.html").c_str(), dao::gui::Value::Bool(false));
             movie.SetVariable((rowBase + ".lblSub.TextField.html").c_str(), dao::gui::Value::Bool(false));
             movie.SetVariable(hlPath.c_str(), dao::gui::Value::Bool(isSelected));
@@ -416,6 +407,8 @@ void SetBrowserVisible(bool visible)
         movie->SetVariable("_root.DAOTransmog_Browser._visible", dao::gui::Value::Bool(visible));
         movie->SetVariable("_root.DAOTransmog_mc._visible", dao::gui::Value::Bool(true));
         movie->SetVariable("_root.InventoryContents_mc._visible", dao::gui::Value::Bool(!visible));
+        movie->SetVariable("_root.ItemCategories_mc._visible", dao::gui::Value::Bool(!visible));
+        movie->SetVariable("_root.ItemSortPicker_mc._visible", dao::gui::Value::Bool(!visible));
         movie->SetVariable("_root.DAOTransmog_mc.lbl.TextField.text",
                            dao::gui::Value::WString(visible ? L"Backpack [T]" : L"Transmog [T]"));
     }
@@ -423,15 +416,42 @@ void SetBrowserVisible(bool visible)
 
 void ToggleWardrobeBrowser()
 {
+    static ULONGLONG s_lastToggleTime = 0;
+    const ULONGLONG now = GetTickCount64();
+    if (now - s_lastToggleTime < 250)
+    {
+        spdlog::debug("[DAOTransmog::Gui] ToggleWardrobeBrowser debounced ({}ms since last toggle)",
+                      now - s_lastToggleTime);
+        return;
+    }
+    s_lastToggleTime = now;
+
     SetBrowserVisible(!g_browserVisible);
     const auto charId = CurrentCharacter();
-    if (g_browserVisible && charId != dao::kInvalidObject)
+    if (charId != dao::kInvalidObject)
     {
-        state::BeginStaging(charId);
-        auto movie = dao::gui::ScreenMovie(L"Inventory");
-        if (movie)
+        if (g_browserVisible)
         {
-            RefreshBrowserUI(*movie, charId);
+            state::BeginStaging(charId);
+            auto movie = dao::gui::ScreenMovie(L"Inventory");
+            if (movie)
+            {
+                RefreshBrowserUI(*movie, charId);
+            }
+        }
+        else
+        {
+            // Closing Wardrobe Browser without applying discards uncommitted staged changes
+            auto *st = state::Find(charId);
+            if (st != nullptr && st->hasStagedChanges)
+            {
+                state::DiscardStaged(charId);
+                RefreshPaperdoll(charId);
+            }
+            if (g_isHeadZoomed)
+            {
+                ZoomPaperdollHead(false);
+            }
         }
     }
 }
@@ -507,6 +527,9 @@ void Init()
                 movie->SetVariable("_root.DAOTransmog_mc._visible", dao::gui::Value::Bool(true));
                 movie->SetVariable("_root.DAOTransmog_mc.lbl.TextField.text", dao::gui::Value::WString(L"Transmog [T]"));
                 movie->SetVariable("_root.DAOTransmog_Browser._visible", dao::gui::Value::Bool(false));
+                movie->SetVariable("_root.InventoryContents_mc._visible", dao::gui::Value::Bool(true));
+                movie->SetVariable("_root.ItemCategories_mc._visible", dao::gui::Value::Bool(true));
+                movie->SetVariable("_root.ItemSortPicker_mc._visible", dao::gui::Value::Bool(true));
                 const bool hasBtn = movie->IsAvailable("_root.DAOTransmog_mc");
                 const bool hasBrowser = movie->IsAvailable("_root.DAOTransmog_Browser");
                 spdlog::info("[DAOTransmog::Gui] Inventory opened; button={}, browser={}", hasBtn, hasBrowser);
@@ -535,6 +558,8 @@ void Init()
             if (movie)
             {
                 movie->SetVariable("_root.InventoryContents_mc._visible", dao::gui::Value::Bool(true));
+                movie->SetVariable("_root.ItemCategories_mc._visible", dao::gui::Value::Bool(true));
+                movie->SetVariable("_root.ItemSortPicker_mc._visible", dao::gui::Value::Bool(true));
                 movie->SetVariable("_root.DAOTransmog_Browser._visible", dao::gui::Value::Bool(false));
                 movie->SetVariable("_root.DAOTransmog_mc.lbl.TextField.text", dao::gui::Value::WString(L"Transmog [T]"));
             }
@@ -593,7 +618,15 @@ void Init()
 
             const auto &picked = rows[itemIdx];
             auto cur = GetStagedSlotOverride(charId, g_selectedSlot);
-            if (g_selectedSlot == catalog::Slot::Helmet)
+            if (picked.mode == state::SlotMode::Real)
+            {
+                cur.mode = state::SlotMode::Real;
+                cur.baseItem = 0xFFFF;
+                cur.variation = 0xFF;
+                cur.material = 0xFF;
+                cur.heraldry = 0;
+            }
+            else if (g_selectedSlot == catalog::Slot::Helmet)
             {
                 if (picked.mode == state::SlotMode::Override)
                 {
@@ -601,12 +634,7 @@ void Init()
                                                                           : state::SlotMode::Override;
                     cur.baseItem = picked.baseItem;
                     cur.variation = picked.variation;
-                }
-                else if (picked.mode == state::SlotMode::Real)
-                {
-                    cur.mode = state::SlotMode::Real;
-                    cur.baseItem = 0xFFFF;
-                    cur.variation = 0xFF;
+                    cur.material = picked.defaultMaterial;
                 }
                 else if (picked.mode == state::SlotMode::HideDialogue)
                 {
@@ -622,6 +650,7 @@ void Init()
                 cur.mode = picked.mode;
                 cur.baseItem = picked.baseItem;
                 cur.variation = picked.variation;
+                cur.material = picked.defaultMaterial;
             }
 
             ApplyStagedSlotOverride(charId, g_selectedSlot, cur);
@@ -835,9 +864,7 @@ void Init()
             const auto charId = CurrentCharacter();
             if (charId != dao::kInvalidObject)
             {
-                auto &st = state::GetOrCreate(charId);
-                st.activePreset = static_cast<std::uint8_t>(presetIdx);
-                state::BeginStaging(charId);
+                state::SwitchPreset(charId, presetIdx);
                 RefreshPaperdoll(charId);
 
                 auto movie = dao::gui::ScreenMovie(L"Inventory");
@@ -996,7 +1023,15 @@ void Init()
 
         // 2. Poll hotkey 'T' during Inventory screen
         static bool s_tWasDown = false;
-        const bool tIsDown = dao::input::Down(dao::input::Key::T);
+        HWND fg = GetForegroundWindow();
+        DWORD fgPid = 0;
+        if (fg != nullptr)
+        {
+            GetWindowThreadProcessId(fg, &fgPid);
+        }
+        const bool gameFocused = (fgPid == GetCurrentProcessId());
+        const bool tIsDown = dao::input::Down(dao::input::Key::T) ||
+                             (gameFocused && ((GetAsyncKeyState('T') & 0x8000) != 0));
         if (tIsDown && !s_tWasDown)
         {
             auto movie = dao::gui::ScreenMovie(L"Inventory");
@@ -1011,6 +1046,412 @@ void Init()
     });
 
     spdlog::info("[DAOTransmog::Gui] GuiBridge initialized");
+}
+
+bool SimulateUiAction(std::string_view command, std::string_view args)
+{
+    if (command == "DAOTransmog_Toggle")
+    {
+        ToggleWardrobeBrowser();
+        return true;
+    }
+    if (command == "DAOTransmog_SelectSlot")
+    {
+        try
+        {
+            const int slotNum = std::stoi(std::string(args));
+            g_selectedSlot = static_cast<catalog::Slot>(std::clamp(slotNum, 0, 6));
+            g_currentPage = 0;
+            ZoomPaperdollHead(g_selectedSlot == catalog::Slot::Helmet);
+            const auto charId = CurrentCharacter();
+            auto movie = dao::gui::ScreenMovie(L"Inventory");
+            if (movie && charId != dao::kInvalidObject)
+            {
+                RefreshBrowserUI(*movie, charId);
+            }
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+    if (command == "DAOTransmog_ClickRow")
+    {
+        try
+        {
+            const int rowIdx = std::stoi(std::string(args));
+            if (rowIdx < 0 || static_cast<std::size_t>(rowIdx) >= kRowsPerPage)
+            {
+                return false;
+            }
+            const auto charId = CurrentCharacter();
+            if (charId == dao::kInvalidObject)
+            {
+                return false;
+            }
+            const auto rows = BuildBrowserRows(g_selectedSlot);
+            const std::size_t itemIdx = g_currentPage * kRowsPerPage + static_cast<std::size_t>(rowIdx);
+            if (itemIdx >= rows.size())
+            {
+                return false;
+            }
+
+            const auto &picked = rows[itemIdx];
+            auto cur = GetStagedSlotOverride(charId, g_selectedSlot);
+            if (picked.mode == state::SlotMode::Real)
+            {
+                cur.mode = state::SlotMode::Real;
+                cur.baseItem = 0xFFFF;
+                cur.variation = 0xFF;
+                cur.material = 0xFF;
+                cur.heraldry = 0;
+            }
+            else if (g_selectedSlot == catalog::Slot::Helmet)
+            {
+                if (picked.mode == state::SlotMode::Override)
+                {
+                    cur.mode = (cur.mode == state::SlotMode::HideDialogue) ? state::SlotMode::HideDialogue
+                                                                           : state::SlotMode::Override;
+                    cur.baseItem = picked.baseItem;
+                    cur.variation = picked.variation;
+                    cur.material = picked.defaultMaterial;
+                }
+                else if (picked.mode == state::SlotMode::HideDialogue)
+                {
+                    cur.mode = state::SlotMode::HideDialogue;
+                }
+                else if (picked.mode == state::SlotMode::HideSlot)
+                {
+                    cur.mode = state::SlotMode::HideSlot;
+                }
+            }
+            else
+            {
+                cur.mode = picked.mode;
+                cur.baseItem = picked.baseItem;
+                cur.variation = picked.variation;
+                cur.material = picked.defaultMaterial;
+            }
+            ApplyStagedSlotOverride(charId, g_selectedSlot, cur);
+            RefreshPaperdoll(charId);
+            auto movie = dao::gui::ScreenMovie(L"Inventory");
+            if (movie)
+            {
+                RefreshBrowserUI(*movie, charId);
+            }
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+    if (command == "DAOTransmog_Page")
+    {
+        try
+        {
+            const int delta = std::stoi(std::string(args));
+            const auto rows = BuildBrowserRows(g_selectedSlot);
+            const std::size_t totalPages = std::max<std::size_t>(1, (rows.size() + kRowsPerPage - 1) / kRowsPerPage);
+            if (delta > 0 && g_currentPage + 1 < totalPages)
+            {
+                ++g_currentPage;
+            }
+            else if (delta < 0 && g_currentPage > 0)
+            {
+                --g_currentPage;
+            }
+            const auto charId = CurrentCharacter();
+            auto movie = dao::gui::ScreenMovie(L"Inventory");
+            if (movie && charId != dao::kInvalidObject)
+            {
+                RefreshBrowserUI(*movie, charId);
+            }
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+    if (command == "DAOTransmog_Mat")
+    {
+        try
+        {
+            const int delta = std::stoi(std::string(args));
+            const auto charId = CurrentCharacter();
+            if (charId == dao::kInvalidObject)
+            {
+                return false;
+            }
+            const auto mats = catalog::Materials();
+            if (mats.empty())
+            {
+                return false;
+            }
+            auto cur = GetStagedSlotOverride(charId, g_selectedSlot);
+            int curIdx = -1;
+            for (std::size_t i = 0; i < mats.size(); ++i)
+            {
+                if (mats[i].id == cur.material)
+                {
+                    curIdx = static_cast<int>(i);
+                    break;
+                }
+            }
+            const int total = static_cast<int>(mats.size());
+            int nextIdx = curIdx + delta;
+            if (nextIdx < -1)
+            {
+                nextIdx = total - 1;
+            }
+            else if (nextIdx >= total)
+            {
+                nextIdx = -1;
+            }
+            cur.material = (nextIdx < 0) ? 0xFF : mats[static_cast<std::size_t>(nextIdx)].id;
+            ApplyStagedSlotOverride(charId, g_selectedSlot, cur);
+            RefreshPaperdoll(charId);
+            auto movie = dao::gui::ScreenMovie(L"Inventory");
+            if (movie)
+            {
+                RefreshBrowserUI(*movie, charId);
+            }
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+    if (command == "DAOTransmog_Her")
+    {
+        try
+        {
+            const int delta = std::stoi(std::string(args));
+            const auto charId = CurrentCharacter();
+            if (charId == dao::kInvalidObject)
+            {
+                return false;
+            }
+            if (g_selectedSlot == catalog::Slot::Helmet)
+            {
+                auto cur = GetStagedSlotOverride(charId, catalog::Slot::Helmet);
+                int modeVal = 0;
+                switch (cur.mode)
+                {
+                case state::SlotMode::Real:
+                case state::SlotMode::Override:
+                    modeVal = 0;
+                    break;
+                case state::SlotMode::HideDialogue:
+                    modeVal = 1;
+                    break;
+                case state::SlotMode::HideSlot:
+                    modeVal = 2;
+                    break;
+                }
+                modeVal = (modeVal + delta + 3) % 3;
+                switch (modeVal)
+                {
+                case 0:
+                    cur.mode = (cur.baseItem != 0xFFFF) ? state::SlotMode::Override : state::SlotMode::Real;
+                    break;
+                case 1:
+                    cur.mode = state::SlotMode::HideDialogue;
+                    break;
+                case 2:
+                    cur.mode = state::SlotMode::HideSlot;
+                    break;
+                }
+                ApplyStagedSlotOverride(charId, catalog::Slot::Helmet, cur);
+                RefreshPaperdoll(charId);
+                auto movie = dao::gui::ScreenMovie(L"Inventory");
+                if (movie)
+                {
+                    RefreshBrowserUI(*movie, charId);
+                }
+                return true;
+            }
+            const auto hers = catalog::Heraldries();
+            if (hers.empty())
+            {
+                return false;
+            }
+            auto cur = GetStagedSlotOverride(charId, g_selectedSlot);
+            int curIdx = -1;
+            for (std::size_t i = 0; i < hers.size(); ++i)
+            {
+                if (hers[i].id == cur.heraldry)
+                {
+                    curIdx = static_cast<int>(i);
+                    break;
+                }
+            }
+            const int total = static_cast<int>(hers.size());
+            int nextIdx = curIdx + delta;
+            if (nextIdx < -1)
+            {
+                nextIdx = total - 1;
+            }
+            else if (nextIdx >= total)
+            {
+                nextIdx = -1;
+            }
+            cur.heraldry = (nextIdx < 0) ? 0 : hers[static_cast<std::size_t>(nextIdx)].id;
+            ApplyStagedSlotOverride(charId, g_selectedSlot, cur);
+            RefreshPaperdoll(charId);
+            auto movie = dao::gui::ScreenMovie(L"Inventory");
+            if (movie)
+            {
+                RefreshBrowserUI(*movie, charId);
+            }
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+    if (command == "DAOTransmog_SyncAll")
+    {
+        const auto charId = CurrentCharacter();
+        auto *st = state::Find(charId);
+        if (st != nullptr)
+        {
+            st->stagedPreview.MatchMaterialToChest();
+            st->hasStagedChanges = true;
+            RefreshPaperdoll(charId);
+            auto movie = dao::gui::ScreenMovie(L"Inventory");
+            if (movie)
+            {
+                RefreshBrowserUI(*movie, charId);
+            }
+            return true;
+        }
+        return false;
+    }
+    if (command == "DAOTransmog_Preset")
+    {
+        try
+        {
+            const int presetIdx = std::clamp(std::stoi(std::string(args)), 0, 2);
+            const auto charId = CurrentCharacter();
+            if (charId != dao::kInvalidObject)
+            {
+                state::SwitchPreset(charId, presetIdx);
+                RefreshPaperdoll(charId);
+                auto movie = dao::gui::ScreenMovie(L"Inventory");
+                if (movie)
+                {
+                    RefreshBrowserUI(*movie, charId);
+                }
+                return true;
+            }
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+    if (command == "DAOTransmog_Apply")
+    {
+        const auto charId = CurrentCharacter();
+        if (charId != dao::kInvalidObject)
+        {
+            state::CommitStaged(charId);
+            RefreshPaperdoll(charId, /*fullRebuild=*/true);
+            portrait::RefreshPortrait(charId);
+            auto movie = dao::gui::ScreenMovie(L"Inventory");
+            if (movie)
+            {
+                RefreshBrowserUI(*movie, charId);
+            }
+            return true;
+        }
+        return false;
+    }
+    if (command == "DAOTransmog_ResetSlot")
+    {
+        const auto charId = CurrentCharacter();
+        if (charId != dao::kInvalidObject)
+        {
+            ApplyStagedSlotOverride(charId, g_selectedSlot, state::SlotOverride{});
+            RefreshPaperdoll(charId);
+            auto movie = dao::gui::ScreenMovie(L"Inventory");
+            if (movie)
+            {
+                RefreshBrowserUI(*movie, charId);
+            }
+            return true;
+        }
+        return false;
+    }
+    if (command == "DAOTransmog_Discard")
+    {
+        const auto charId = CurrentCharacter();
+        if (charId != dao::kInvalidObject)
+        {
+            state::DiscardStaged(charId);
+            RefreshPaperdoll(charId);
+            auto movie = dao::gui::ScreenMovie(L"Inventory");
+            if (movie)
+            {
+                RefreshBrowserUI(*movie, charId);
+            }
+            return true;
+        }
+        return false;
+    }
+    if (command == "DAOTransmog_ZoomToggle")
+    {
+        ZoomPaperdollHead(!g_isHeadZoomed);
+        return true;
+    }
+    return false;
+}
+
+UiVariableResult QueryInventoryUiVariable(const char *path)
+{
+    UiVariableResult res;
+    auto movie = dao::gui::ScreenMovie(L"Inventory");
+    if (!movie || !movie->IsAvailable(path))
+    {
+        return res;
+    }
+    res.found = true;
+    auto ans = movie->Get(path);
+    if (!ans)
+    {
+        res.type = "nullopt";
+        return res;
+    }
+    switch (ans->type)
+    {
+    case dao::gui::Value::Type::Boolean:
+        res.type = "bool";
+        res.boolVal = ans->boolean;
+        break;
+    case dao::gui::Value::Type::Number:
+        res.type = "number";
+        res.numVal = ans->number;
+        break;
+    case dao::gui::Value::Type::String:
+    case dao::gui::Value::Type::StringW:
+        res.type = "string";
+        res.strVal = ans->text;
+        break;
+    default:
+        res.type = "undefined";
+        break;
+    }
+    return res;
+}
+
+dao::ObjectId GetCurrentCharacterId()
+{
+    return CurrentCharacter();
 }
 
 } // namespace transmog::gui

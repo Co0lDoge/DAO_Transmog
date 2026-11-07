@@ -172,6 +172,19 @@ void ScanWith(GetIntFn getInt, GetStringFn getString, ExistsFn exists)
             const auto modelVar = getString(varSheet, varId, "ModelVariation").value_or(L"");
             const auto iconName = getString(varSheet, varId, "IconName").value_or(L"");
             const auto varLabel = getString(varSheet, varId, "Label").value_or(L"");
+            auto containsCi = [](std::wstring_view str, std::wstring_view sub) {
+                auto it = std::search(
+                    str.begin(), str.end(),
+                    sub.begin(), sub.end(),
+                    [](wchar_t ch1, wchar_t ch2) { return std::towupper(ch1) == std::towupper(ch2); }
+                );
+                return it != str.end();
+            };
+            if (containsCi(varLabel, L"CUT") || containsCi(varLabel, L"Obsolete") ||
+                containsCi(baseLabel, L"CUT") || containsCi(baseLabel, L"Obsolete"))
+            {
+                continue;
+            }
             const auto rowMat = static_cast<std::uint8_t>(getInt(varSheet, varId, "DefaultMaterial").value_or(defMat));
             const auto fullFaceVal = getInt(varSheet, varId, "FullFace").value_or(0);
 
