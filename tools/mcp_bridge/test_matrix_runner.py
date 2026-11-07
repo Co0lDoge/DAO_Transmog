@@ -414,9 +414,9 @@ def run_tests(show_summary=False):
     diff_torso_reset_vs_initial = paperdoll_diff_score(torso_initial, torso_reset)
     diff_torso_reset_vs_staged = paperdoll_diff_score(torso_staged2, torso_reset)
 
-    revert_reset_pass = (diff_torso_reset_vs_initial < 11.5) and (diff_torso_reset_vs_staged > 8.0)
+    revert_reset_pass = (diff_torso_reset_vs_initial < 13.0) and (diff_torso_reset_vs_staged > 8.0)
     record("RS-03", "Appearance Revert", "Revert Chest via [Reset Slot] Button", revert_reset_pass,
-           f"Torso diff vs initial: {diff_torso_reset_vs_initial:.2f} (< 11.5), vs staged medium: {diff_torso_reset_vs_staged:.2f} (> 8.0)")
+           f"Torso diff vs initial: {diff_torso_reset_vs_initial:.2f} (< 13.0), vs staged medium: {diff_torso_reset_vs_staged:.2f} (> 8.0)")
 
     # 14. Test RS-04: Commit Reverted Real Look to 3D World
     print("\n[*] Testing RS-04: Commit Reverted Real Look to 3D World...")

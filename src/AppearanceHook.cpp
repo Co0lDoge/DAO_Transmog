@@ -70,6 +70,13 @@ void ApplyTransmogToAppearance(dao::ObjectId targetId, void *creature, void *app
         }
     }
 
+    // Only apply transmog / revert authentic appearance on party members or the hero.
+    // Non-party creatures (NPCs, enemies) should not have their appearance touched.
+    if (targetId != dao::kInvalidObject && !state::IsPartyMemberOrHero(targetId))
+    {
+        return;
+    }
+
     // Resolve the real creature pointer for equipment queries
     void *targetCreature = creature;
     if (targetId != dao::kInvalidObject)
@@ -141,12 +148,10 @@ void ApplyTransmogToAppearance(dao::ObjectId targetId, void *creature, void *app
         const bool allowPreview = (st != nullptr && st->hasStagedChanges);
         const bool canDisplay = !config::RequireEquipped() || isEquipped || allowPreview;
 
-        if (preset == nullptr || i >= preset->armorSlots.size())
-        {
-            continue;
-        }
+        state::SlotOverride defaultReal;
+        defaultReal.mode = state::SlotMode::Real;
+        const auto &ovr = (preset != nullptr && i < preset->armorSlots.size()) ? preset->armorSlots[i] : defaultReal;
 
-        const auto &ovr = preset->armorSlots[i];
         if (ovr.mode == state::SlotMode::Real)
         {
             // Revert slot to real equipped item's authentic appearance via engine CAppearance::ApplyItem
@@ -156,7 +161,7 @@ void ApplyTransmogToAppearance(dao::ObjectId targetId, void *creature, void *app
                 auto applyItem = reinterpret_cast<ApplyItemFn>(dao::core::Relocate(0x00748da0, dao::Module::Base()));
                 applyItem(appearance, invSlot, reinterpret_cast<void *>(realItem));
             }
-            else
+            else if (hasEquipmentHolder)
             {
                 baseItemWords[i] = 0xFFFF;
                 variationBytes[i] = 0xFF;

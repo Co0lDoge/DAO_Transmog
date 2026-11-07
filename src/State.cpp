@@ -222,6 +222,7 @@ void Init()
         }
 
         spdlog::info("[DAOTransmog::State] No DAOTransmog.daolib found in save slot; keeping vanilla");
+        SetNeedsWorldRefresh(true);
     });
 
     LoadUnlockedList();
@@ -267,9 +268,10 @@ void RestoreFromResumeIfNeeded()
     }
 
     spdlog::info("[DAOTransmog::State] No DAOTransmog.daolib found for Resume fallback; keeping vanilla");
+    SetNeedsWorldRefresh(true);
 }
 
-bool IsHeroObject(dao::ObjectId id, std::string_view tag = {})
+bool IsHeroObject(dao::ObjectId id, std::string_view tag)
 {
     if (tag == "hero" || tag == "player_hero" || tag == "player")
     {
@@ -286,6 +288,43 @@ bool IsHeroObject(dao::ObjectId id, std::string_view tag = {})
     }
     const std::wstring engineTag = dao::script::api::GetTag(id);
     return (engineTag == L"player" || engineTag == L"player_hero");
+}
+
+bool IsPartyMemberOrHero(dao::ObjectId id)
+{
+    if (id == dao::kInvalidObject)
+    {
+        return false;
+    }
+    if (IsHeroObject(id))
+    {
+        return true;
+    }
+    if (id == dao::party::Controlled() || id == dao::party::ScreenCharacter())
+    {
+        return true;
+    }
+    const dao::ObjectId heroId = dao::script::api::GetHero();
+    if (heroId != dao::kInvalidObject)
+    {
+        const auto party = dao::script::api::GetPartyList(heroId);
+        for (std::size_t i = 0; i < party.Size(); ++i)
+        {
+            if (party.Object(i) == id)
+            {
+                return true;
+            }
+        }
+    }
+    const auto sel = dao::party::Selected();
+    for (const auto obj : sel)
+    {
+        if (obj == id)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 std::string GetCreatureTag(dao::ObjectId id)
